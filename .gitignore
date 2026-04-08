@@ -214,6 +214,8 @@ __marimo__/
 window_settings.json
 
 # Video
-data/models/*.pt
 data/videos/*.mp4
 data/videos/*.avi
+
+# Models
+*.pt

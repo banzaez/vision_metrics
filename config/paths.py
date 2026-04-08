@@ -11,5 +11,3 @@ class PathsConfig:
     window_settings_file: str = "window_settings.json"
     # Папка с конфигурациями трекеров
     trackers_dir: str = "config/trackers"
-    # Папка для скачивания и хранения моделей YOLO (.pt)
-    models_dir: str = "data/models"
