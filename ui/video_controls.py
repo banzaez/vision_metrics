@@ -1,0 +1,130 @@
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QSlider, QLabel
+from PyQt6.QtCore import Qt, pyqtSlot
+import config
+
+class VideoControlPanel(QWidget):
+    """
+    Панель управления видео: пауза, перемотка, текущее время.
+    """
+    def __init__(self, video_worker):
+        super().__init__()
+        self.video_worker = video_worker
+        
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(5, 0, 5, 5)
+        self.main_layout.setSpacing(2)
+        
+        # ПОДСКАЗКА ПО КОНТРОЛУ
+        self.lbl_hint = QLabel("Space: пауза/старт  |  ⬅ ➡: перемотка на 5 сек")
+        self.lbl_hint.setStyleSheet("color: #888; font-size: 10px; font-weight: 500; font-family: sans-serif;")
+        self.lbl_hint.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self.main_layout.addWidget(self.lbl_hint)
+        
+        # Основной контейнер кнопок и слайдера
+        self.controls_layout = QHBoxLayout()
+        self.main_layout.addLayout(self.controls_layout)
+        
+        # Кнопка Play/Pause
+        self.btn_pause = QPushButton("Pause")
+        self.btn_pause.setFixedWidth(80)
+        self.btn_pause.setCheckable(True)
+        self.btn_pause.clicked.connect(self.toggle_pause)
+        self.controls_layout.addWidget(self.btn_pause)
+        
+        # Слайдер перемотки (стилизованный под тонкую линию)
+        self.slider = QSlider(Qt.Orientation.Horizontal)
+        self.slider.setEnabled(False)
+        self.slider.setStyleSheet("""
+            QSlider::groove:horizontal {
+                border: 0px;
+                height: 4px;
+                background: #333;
+                border-radius: 2px;
+            }
+            QSlider::handle:horizontal {
+                background: #0078d4;
+                border: 1px solid #0078d4;
+                width: 14px;
+                height: 14px;
+                margin: -5px 0;
+                border-radius: 7px;
+            }
+            QSlider::sub-page:horizontal {
+                background: #0078d4;
+            }
+        """)
+        self.slider.sliderPressed.connect(self.on_slider_pressed)
+        self.slider.sliderReleased.connect(self.on_slider_released)
+        self.slider.sliderMoved.connect(self.on_slider_moved)
+        self.controls_layout.addWidget(self.slider)
+        
+        # Метка времени/кадров
+        self.lbl_time = QLabel("0 / 0")
+        self.controls_layout.addWidget(self.lbl_time)
+        
+        # Подключаем сигналы от воркера
+        self.video_worker.duration_ready.connect(self.set_duration)
+        self.video_worker.position_changed.connect(self.update_position)
+        
+        self.is_sliding = False
+        self.total_frames = 0
+
+    @pyqtSlot(bool)
+    def toggle_pause(self, checked):
+        if checked:
+            self.btn_pause.setText("Play")
+            self.video_worker.set_paused(True)
+        else:
+            self.btn_pause.setText("Pause")
+            self.video_worker.set_paused(False)
+
+    @pyqtSlot(int)
+    def set_duration(self, total_frames):
+        self.total_frames = total_frames
+        self.slider.setRange(0, total_frames)
+        self.slider.setEnabled(True)
+        self.update_time_label(0)
+
+    @pyqtSlot(int)
+    def update_position(self, current_frame):
+        if not self.is_sliding:
+            self.slider.setValue(current_frame)
+            self.update_time_label(current_frame)
+
+    def on_slider_pressed(self):
+        self.is_sliding = True
+
+    def on_slider_released(self):
+        self.is_sliding = False
+        self.video_worker.set_position(self.slider.value())
+
+    def on_slider_moved(self, pos):
+        self.update_time_label(pos)
+
+    def update_time_label(self, current):
+        self.lbl_time.setText(f"{current} / {self.total_frames}")
+
+    def trigger_pause(self):
+        """Программное переключение паузы (для пробела)."""
+        self.btn_pause.setChecked(not self.btn_pause.isChecked())
+        self.toggle_pause(self.btn_pause.isChecked())
+
+    def step_forward(self, frames=None):
+        """Перемотка вперед на N кадров."""
+        if frames is None:
+            frames = config.settings.system.ui.step_frames
+        if self.total_frames > 0:
+            new_pos = min(self.slider.value() + frames, self.total_frames)
+            self.slider.setValue(new_pos)
+            self.video_worker.set_position(new_pos)
+            self.update_time_label(new_pos)
+
+    def step_backward(self, frames=None):
+        """Перемотка назад на N кадров."""
+        if frames is None:
+            frames = config.settings.system.ui.step_frames
+        if self.total_frames > 0:
+            new_pos = max(self.slider.value() - frames, 0)
+            self.slider.setValue(new_pos)
+            self.video_worker.set_position(new_pos)
+            self.update_time_label(new_pos)

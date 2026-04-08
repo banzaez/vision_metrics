@@ -1,0 +1,7 @@
+numpy>=2.4.4
+opencv-python>=4.13.0
+PyQt6==6.11.0
+shapely>=2.1.2
+ultralytics==8.4.35
+boxmot>=17.0.0
+psutil>=7.2.2
