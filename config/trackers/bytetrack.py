@@ -14,10 +14,10 @@ class ByteTrackConfig:
     match_thresh: float = 0.8         # Порог IoU для ассоциации
     
     # Параметры памяти и ассоциации
-    track_buffer: int = 31           # Буфер памяти трека в кадрах
+    track_buffer: int = 300.           # Буфер памяти трека в кадрах
 
     # FPS привязан к системному frame_skip: чем больше пропуск, тем меньше эффективный FPS
-    frame_rate: int = perf.frame_rate // (perf.frame_skip + 1)
+    frame_rate: int = perf.frame_rate // perf.frame_skip
     
     # Режим детекций
-    per_class: bool = False           # Независимый трекинг для каждого класса
+    per_class: bool = False           # Независимый трекинг для каждого класса  

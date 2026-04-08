@@ -22,7 +22,7 @@ class BotSortConfig:
     appearance_thresh: float = 0.6    # Порог визуального сходства (Re-ID)
     
     # FPS привязан к системному frame_skip: чем больше пропуск, тем меньше эффективный FPS
-    frame_rate: int = perf.frame_rate // (perf.frame_skip + 1)
+    frame_rate: int = perf.frame_rate // perf.frame_skip
     
     # Ре-идентификация (Re-ID)
     with_reid: bool = True            # Использовать ли Re-ID модель
