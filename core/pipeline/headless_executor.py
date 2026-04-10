@@ -13,10 +13,11 @@ class HeadlessExecutor:
     Универсальный исполнитель для обработки видео без GUI.
     Может использоваться как в CLI-скриптах, так и внутри VideoWorker.
     """
-    def __init__(self, source_path, weights=None, device=None, callbacks=None):
+    def __init__(self, source_path, weights=None, device=None, batch_size=1, callbacks=None):
         self.source_path = source_path
         self.weights = weights or config.settings.yolo.weights
         self.device = device or config.settings.system.perf.device
+        self.batch_size = batch_size
         self.callbacks = callbacks or {} # Словарь функций: on_frame, on_stats, on_progress
         
         self.running = False
@@ -25,7 +26,7 @@ class HeadlessExecutor:
         self.monitor = ResourceMonitor()
 
     def run(self):
-        """Запускает полный цикл обработки видео."""
+        """Запускает полный цикл обработки видео с поддержкой батчей."""
         self.running = True
         
         # 1. Загрузка компонентов
@@ -81,7 +82,10 @@ class HeadlessExecutor:
             self.callbacks['on_duration'](total_frames)
 
         frame_count = 0
-        logger.info(f"Начало обработки {filename} (Headless Mode)...")
+        logger.info(f"Начало обработки {filename} (Batch Size: {self.batch_size})...")
+
+        batch_frames = []
+        batch_ids = []
 
         while self.running:
             is_processing_frame = frame_count % cfg_perf.frame_skip == 0
@@ -95,34 +99,57 @@ class HeadlessExecutor:
                 break
                 
             frame_count += 1
-            self.monitor.update() # Считаем каждый кадр для честного FPS
+            self.monitor.update()
             
-            # Обновляем прогресс чаще (раз в 1 кадр, tqdm сам оптимизирует отрисовку)
             if 'on_progress' in self.callbacks:
                 self.callbacks['on_progress'](frame_count)
 
             if is_processing_frame:
-                # Вся логика логгирования и расчета lifetime теперь внутри process_frame!
-                detections, active_ids = self.detector.process_frame(
-                    frame, 
-                    frame_id=frame_count,
-                    roi=cfg_analytics.roi,
-                    staff_zones=cfg_analytics.staff_zones
-                )
-                
-                if 'on_stats' in self.callbacks:
-                    self.callbacks['on_stats'](detections)
-            
+                batch_frames.append(frame)
+                batch_ids.append(frame_count)
+
+                # Если набрали батч - в обработку
+                if len(batch_frames) >= self.batch_size:
+                    self._process_and_emit(batch_frames, batch_ids, cfg_analytics)
+                    batch_frames, batch_ids = [], []
+
             # Метрики ресурсов раз в секунду
             if frame_count % 30 == 0:
                 if 'on_performance' in self.callbacks:
                     self.callbacks['on_performance'](self.monitor.get_stats())
+
+        # Дорабатываем остатки батча (если видео закончилось)
+        if batch_frames:
+            self._process_and_emit(batch_frames, batch_ids, cfg_analytics)
 
         # Завершение
         cap.release()
         self.data_logger.close()
         logger.info(f"Обработка {filename} завершена. Всего кадров: {frame_count}")
         return True
+
+    def _process_and_emit(self, frames, ids, cfg_analytics):
+        if self.batch_size > 1:
+            batch_results = self.detector.process_batch(
+                frames, 
+                frame_ids=ids,
+                roi=cfg_analytics.roi,
+                staff_zones=cfg_analytics.staff_zones
+            )
+            # Эмитим только последний результат батча для стат-коллбэка
+            if 'on_stats' in self.callbacks and batch_results:
+                last_detections, _ = batch_results[-1]
+                self.callbacks['on_stats'](last_detections)
+        else:
+            # Одиночный режим
+            detections, active_ids = self.detector.process_frame(
+                frames[0], 
+                frame_id=ids[0],
+                roi=cfg_analytics.roi,
+                staff_zones=cfg_analytics.staff_zones
+            )
+            if 'on_stats' in self.callbacks:
+                self.callbacks['on_stats'](detections)
 
     def stop(self):
         self.running = False

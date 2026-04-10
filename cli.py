@@ -20,6 +20,7 @@ def main():
     parser.add_argument("--source", type=str, required=True, help="Path to video file or stream URL")
     parser.add_argument("--weights", type=str, help="Path to YOLO weights (.pt)")
     parser.add_argument("--device", type=str, help="Device to run on (cpu, mps, cuda)")
+    parser.add_argument("--batch-size", type=int, default=4, help="Number of frames to process at once (e.g., 4 or 8)")
     
     args = parser.parse_args()
     setup_logging()
@@ -61,6 +62,7 @@ def main():
         source_path=args.source,
         weights=args.weights,
         device=args.device,
+        batch_size=args.batch_size,
         callbacks=callbacks
     )
     

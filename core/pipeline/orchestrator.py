@@ -103,7 +103,12 @@ class DetectorTracker:
 
         batch_output = []
         for res, inp_frame, (x_off, y_off), f_id, ts in zip(results, processed_inputs, offsets, frame_ids, ts_list):
-            batch_output.append(self._analyze_results(res, inp_frame, x_off, y_off, f_id, ts))
+            detections, active_ids = self._analyze_results(res, inp_frame, x_off, y_off, f_id, ts)
+            
+            # Постобработка и Логгирование (ОБЯЗАТЕЛЬНО для Batch режима)
+            self._post_process(detections, f_id, ts)
+            
+            batch_output.append((detections, active_ids))
             self._frame_count += 1
             self._cleanup_lru()
 

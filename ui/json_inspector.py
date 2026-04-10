@@ -1,5 +1,5 @@
 import json
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, 
+from PyQt6.QtWidgets import (QHBoxLayout, 
                              QListWidget, QTextEdit, QGroupBox, QSplitter)
 from PyQt6.QtCore import pyqtSlot, Qt
 
