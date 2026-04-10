@@ -19,7 +19,7 @@ class PerformanceConfig:
     device: str = field(default_factory=get_optimal_device)
 
     # FP16 режим (рекомендуется для Mac M1)
-    half: bool = True
+    half: bool = False
 
     # Размер пакета кадров для YOLO (batch size).
     # При 1 - минимальная задержка, при > 1 - выше пропускная способность.

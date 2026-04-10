@@ -13,7 +13,7 @@ class TrackerConfig(BaseTrackerParams):
     """
 
     # Выбор активного трекера
-    type: TrackerType = TrackerType.BYTETRACK
+    type: TrackerType = TrackerType.HYBRIDSORT
 
     # Использовать ли Re-ID
     # Поддерживается в: BoTSORT, BoostTrack, DeepOCSort, StrongSort, HybridSort
@@ -21,7 +21,7 @@ class TrackerConfig(BaseTrackerParams):
 
     # Выбор модели Re-ID
     # Только для: DeepSort, DeepOCSort, StrongSort, HybridSort
-    reid_model: str = ReIDModel.OSNET_IBN_X1_0.value
+    reid_model: str = ReIDModel.RESNET101
 
     # Список классов для отслеживания ([0] для людей)
     classes: List[int] = field(default_factory=lambda: [0])

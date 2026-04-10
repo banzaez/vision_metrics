@@ -32,7 +32,8 @@ class TrackProcessor:
         cx, cy = (x1 + x2) // 2, y2
         in_staff_zone = self.zone_manager.is_in_staff_zone(cx, cy)
         is_dark = self.role_classifier.get_is_dark(
-            track_id, original_idx, orig_box, input_frame, masks_np if original_idx != -1 else None
+            track_id, original_idx, orig_box, input_frame, masks_np if original_idx != -1 else None,
+            current_frame_id=frame_id
         )
 
         # 3. Обновление состояния трека

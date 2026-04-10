@@ -1,7 +1,6 @@
 from dataclasses import dataclass
-from enum import Enum
 
-class YOLOModel(Enum):
+class YOLOModel:
     YOLO26N_SEG = "yolo26n-seg.pt"
     YOLO26N = "yolo26n.pt"
     YOLO26S_SEG = "yolo26s-seg.pt"
@@ -14,7 +13,7 @@ class YOLOModel(Enum):
     YOLO26X = "yolo26x.pt"
 
 
-class YOLOImageSize(Enum):
+class YOLOImageSize:
     N = 640
     S = 960
     M = 1280
@@ -27,14 +26,19 @@ class YOLOParams:
     path_to_models: str = "./data/models/"
 
     # Имя файла весов модели YOLO (.pt)
-    weights: str = path_to_models + YOLOModel.YOLO26M_SEG.value
+    weights: str = path_to_models + YOLOModel.YOLO26M_SEG
+
     # Размер изображения для инференса (640, 960, 1280)
-    imgsz: int = YOLOImageSize.N.value
+    imgsz: int = YOLOImageSize.S
+
     # Порог уверенности: детекции ниже этого значения игнорируются для конечного вывода.
-    conf_threshold: float = 0.10
+    conf_threshold: float = 0.30
+
     # Порог Intersection Over Union для подавления дублирующих боксов
     iou_threshold: float = 0.5
+
     # Классово-независимая фильтрация (NMS): удаляет пересекающиеся боксы разных классов
     agnostic_nms: bool = True
+    
     # Использовать высокоточные маски (более медленно, но точнее)
     retina_masks: bool = True

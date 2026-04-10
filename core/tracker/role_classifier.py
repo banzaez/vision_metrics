@@ -1,5 +1,4 @@
 import cv2
-import time
 import config
 from core.classifier import ClothingClassifier
 
@@ -11,15 +10,13 @@ class RoleClassifier:
         self.classifier = ClothingClassifier(dark_threshold=cfg_ident.black_threshold)
         self.dark_cache = {}
         
-    def get_is_dark(self, track_id, mask_index, box, input_frame, masks_np):
+    def get_is_dark(self, track_id, mask_index, box, input_frame, masks_np, current_frame_id=None):
         cached = self.dark_cache.get(track_id)
-        current_time = time.time()
         
-        if cached is not None:
-            cached_value, last_update = cached
-            # Кэшируем результат на 0.5 секунды (примерно 15 кадров)
-            # Это исключает лишние вычисления при паузе или нелинейном воспроизведении
-            if current_time - last_update < 0.5:
+        if cached is not None and current_frame_id is not None:
+            cached_value, last_frame = cached
+            # Кэшируем результат на 15 кадров
+            if current_frame_id - last_frame < 15:
                 return cached_value
         
         bx1, by1, bx2, by2 = map(int, box)
@@ -53,7 +50,7 @@ class RoleClassifier:
                 
                 is_dark = self.classifier.is_dark_clothing(crop_m, crop_f)
         
-        self.dark_cache[track_id] = (is_dark, current_time)
+        self.dark_cache[track_id] = (is_dark, current_frame_id if current_frame_id is not None else 0)
         return is_dark
 
     def classify_person_type(self, is_dark, current_ema, type_history_len, 
@@ -65,7 +62,13 @@ class RoleClassifier:
             current_ema = 1.0
             is_dark = True
         
-        alpha = self.cfg_role.ema_alpha
+        # Адаптивная EMA: быстрее в начале пути трека для быстрой классификации
+        base_alpha = self.cfg_role.ema_alpha
+        warmup_frames = self.cfg_role.min_eval_frames
+        
+        # Если трек совсем свежий, доверяем текущему измерению на 50%
+        alpha = min(0.5, base_alpha * 2) if type_history_len < warmup_frames * 2 else base_alpha
+        
         new_ema = alpha * (1.0 if is_dark else 0.0) + (1.0 - alpha) * current_ema
         
         # Гистерезис: удерживаем текущий статус более слабыми порогами

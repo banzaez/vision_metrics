@@ -1,3 +1,5 @@
+import numpy as np
+
 def crop_roi(frame, roi):
     """
     Обрезка кадра по ROI с вычислением смещения x_off, y_off.
@@ -24,16 +26,21 @@ def crop_roi(frame, roi):
             
     return input_frame, x_off, y_off
 
-def filter_detections(boxes, confs, cls, masks_np, min_size=2.0):
+def filter_detections(boxes, confs, cls, masks_np, min_size=15.0):
     """
-    Фильтрация некорректных или слишком маленьких боксов.
+    Фильтрация некорректных, слишком маленьких или неестественно вытянутых боксов.
     """
     if len(boxes) == 0:
         return boxes, confs, cls, masks_np
         
     w = boxes[:, 2] - boxes[:, 0]
     h = boxes[:, 3] - boxes[:, 1]
-    valid_mask = (w > min_size) & (h > min_size)
+    
+    # Соотношение сторон (человек в полный рост обычно h/w > 1.5, но берем с запасом)
+    aspect_ratio = h / np.where(w > 0, w, 1e-6)
+    
+    # Валидными считаем боксы достаточного размера и адекватной формы
+    valid_mask = (w > min_size) & (h > min_size) & (aspect_ratio < 6.0) & (aspect_ratio > 0.1)
 
     boxes = boxes[valid_mask]
     confs = confs[valid_mask]
