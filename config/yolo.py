@@ -18,6 +18,7 @@ class YOLOImageSize(int, Enum):
     M = 960
     L = 1280
     XL = 1536
+    XXL = 1920
 
 
 @dataclass

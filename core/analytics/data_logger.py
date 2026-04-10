@@ -9,11 +9,23 @@ class JSONDataLogger:
     Класс для высокопроизводительной потоковой записи результатов трекинга в JSON.
     Обеспечивает иерархическую структуру root -> frames -> objects.
     """
-    def __init__(self, output_path, metadata=None):
+    def __init__(self, output_path=None, metadata=None):
         self.output_path = output_path
         self.metadata = metadata or {}
         self.file = None
         self._first_frame = True
+
+    def setup_from_video(self, video_path):
+        """
+        Автоматически настраивает путь сохранения на основе пути к видео.
+        Добавляет префикс json_ и расширение .json.
+        """
+        import os
+        filename = os.path.basename(video_path)
+        # Убираем префикс json_, просто меняем расширение
+        json_name = os.path.splitext(filename)[0] + ".json"
+        self.output_path = os.path.join("data", "results", json_name)
+        return self.output_path
         
     def open(self):
         """Инициализирует файл и записывает заголовок с метаданными."""

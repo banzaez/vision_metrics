@@ -190,10 +190,7 @@ class MainWindow(QMainWindow):
         pixmap.setDevicePixelRatio(dpr)
         
         # Атомарная установка нового pixmap
-        old_pixmap = self.video_label.pixmap()
         self.video_label.setPixmap(pixmap)
-        if old_pixmap is not None:
-            old_pixmap.detach()
 
     @pyqtSlot(str)
     def show_error(self, message):

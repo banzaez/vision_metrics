@@ -4,6 +4,7 @@ import logging
 import config
 from core.pipeline.orchestrator import DetectorTracker
 from core.analytics.data_logger import JSONDataLogger
+from utils.filename_parser import extract_camera_id, parse_nvr_filename
 from utils.monitor import ResourceMonitor
 
 logger = logging.getLogger(__name__)
@@ -34,19 +35,21 @@ class HeadlessExecutor:
             cfg_perf = config.settings.system.perf
             cfg_analytics = config.settings.analytics
             
+            filename = os.path.basename(self.source_path)
+            nvr_meta = parse_nvr_filename(filename)
+            extracted_camera_id = nvr_meta.get("camera_id", "unknown")
+
             self.detector = DetectorTracker(
                 model_path=self.weights,
-                camera_id=cfg_analytics.camera_id,
+                camera_id=extracted_camera_id,
                 device=self.device,
                 half=cfg_perf.half
             )
             
-            # Определяем имя лога
-            filename = os.path.basename(self.source_path)
-            json_filename = os.path.splitext(filename)[0] + ".json"
-            output_path = os.path.join("data", json_filename)
+            # Инициализация и настройка логгера (вся логика путей теперь внутри!)
+            self.data_logger = JSONDataLogger()
+            self.data_logger.setup_from_video(self.source_path)
             
-            self.data_logger = JSONDataLogger(output_path=output_path)
         except Exception as e:
             logger.error(f"Ошибка инициализации HeadlessExecutor: {e}")
             return False
@@ -72,6 +75,8 @@ class HeadlessExecutor:
             "total_frames": total_frames
         }
         self.data_logger.metadata = meta
+        # Добавляем расширенные данные из имени файла
+        self.data_logger.metadata.update(nvr_meta)
         self.data_logger.open()
         
         # Настраиваем оркестратор (унифицированная логика)

@@ -12,9 +12,12 @@ import config
 from core.pipeline.orchestrator import DetectorTracker
 from core.analytics.data_logger import JSONDataLogger
 from utils.visualizer import Visualizer
+from utils.filename_parser import parse_nvr_filename
 from utils.monitor import ResourceMonitor
 
 logger = logging.getLogger(__name__)
+
+FRAME_SKIP_INTERVAL = 15
 
 
 class VideoWorker(QObject):
@@ -125,13 +128,10 @@ class VideoWorker(QObject):
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         
-        # Извлекаем Camera ID из имени файла (например, Camera_01_...)
         filename = os.path.basename(source) if not is_stream else "stream"
-        camera_id = "stream"
-        if not is_stream:
-            # Берем часть до первого крупного разделителя или расширения
-            camera_id = filename.split('_')[0] if '_' in filename else filename.split('.')[0]
-        
+        nvr_meta = parse_nvr_filename(filename) if not is_stream else {}
+        camera_id = nvr_meta.get("camera_id", "stream")
+
         self.video_metadata.update({
             "camera_id": camera_id,
             "filename": filename,
@@ -140,10 +140,10 @@ class VideoWorker(QObject):
             "height": height,
             "total_frames": total_frames
         })
+        self.video_metadata.update(nvr_meta)
 
-        # Определяем путь для сохранения JSON-отчета на основе имени видео
-        json_filename = os.path.splitext(filename)[0] + ".json"
-        self.data_logger.output_path = os.path.join("data", json_filename)
+        # Настройка логгера (вся логика путей теперь внутри!)
+        self.data_logger.setup_from_video(source)
 
         # Открываем логгер с актуальными метаданными
         self.data_logger.metadata = self.video_metadata
@@ -197,8 +197,8 @@ class VideoWorker(QObject):
 
             self.frame_count += 1
 
-            # Обновляем прогресс-бар раз в 15 кадров
-            if total_frames > 0 and self.frame_count % 15 == 0:
+            # Обновляем прогресс-бар раз в FRAME_SKIP_INTERVAL кадров
+            if total_frames > 0 and self.frame_count % FRAME_SKIP_INTERVAL == 0:
                 self.position_changed.emit(self.frame_count)
 
             is_processing_frame = self.frame_count % cfg_perf.frame_skip == 0
@@ -276,10 +276,6 @@ class VideoWorker(QObject):
         if self.data_logger:
             self.data_logger.close()
         self.finished.emit()
-
-    def _apply_detections(self, detections, active_ids):
-        # Метод больше не используется
-        pass
 
     def stop(self):
         """Остановка цикла обработки."""
