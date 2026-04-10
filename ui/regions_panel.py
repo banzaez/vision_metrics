@@ -2,8 +2,33 @@ import cv2
 import json
 import os
 import config
+import threading
 from PyQt6.QtWidgets import (QVBoxLayout, QPushButton, QListWidget, 
                              QLabel, QGroupBox, QMessageBox)
+from PyQt6.QtCore import QObject, pyqtSignal
+
+
+class ROISelector(QObject):
+    finished = pyqtSignal(tuple)
+    cancelled = pyqtSignal()
+    
+    def __init__(self, window_name, frame):
+        super().__init__()
+        self.window_name = window_name
+        self.frame = frame
+        self._running = True
+        
+    def cancel(self):
+        self._running = False
+        
+    def run(self):
+        r = cv2.selectROI(self.window_name, self.frame, False)
+        if self._running:
+            if r[2] > 0 and r[3] > 0:
+                self.finished.emit(r)
+            else:
+                self.cancelled.emit()
+        cv2.destroyWindow(self.window_name)
 
 class RegionsPanel(QGroupBox):
     """
@@ -82,15 +107,13 @@ class RegionsPanel(QGroupBox):
             return
             
         self.video_worker.set_paused(True)
-        r = cv2.selectROI("Drawing ROI", self.last_cv_frame, False)
-        if r[2] > 0 and r[3] > 0:
-            new_roi = [int(r[0]), int(r[1]), int(r[0]+r[2]), int(r[1]+r[3])]
-            config.settings.analytics.roi = new_roi
-            with open(config.settings.paths.roi_file, 'w', encoding='utf-8') as f:
-                json.dump(new_roi, f)
-            self.update_zones_list()
-        cv2.destroyWindow("Drawing ROI")
-        self.video_worker.set_paused(False)
+        
+        selector = ROISelector("Drawing ROI", self.last_cv_frame)
+        selector.finished.connect(lambda r: self._on_roi_selected(r, is_roi=True))
+        selector.cancelled.connect(self._on_selection_cancelled)
+        
+        thread = threading.Thread(target=selector.run, daemon=True)
+        thread.start()
 
     def add_staff_zone(self):
         """Добавляет зону для автоматического определения персонала."""
@@ -98,14 +121,31 @@ class RegionsPanel(QGroupBox):
             return
             
         self.video_worker.set_paused(True)
-        r = cv2.selectROI("Drawing Staff Zone", self.last_cv_frame, False)
+        
+        selector = ROISelector("Drawing Staff Zone", self.last_cv_frame)
+        selector.finished.connect(lambda r: self._on_roi_selected(r, is_roi=False))
+        selector.cancelled.connect(self._on_selection_cancelled)
+        
+        thread = threading.Thread(target=selector.run, daemon=True)
+        thread.start()
+
+    def _on_roi_selected(self, r, is_roi):
+        """Обработка выбранной зоны."""
         if r[2] > 0 and r[3] > 0:
-            new_z = [int(r[0]), int(r[1]), int(r[0]+r[2]), int(r[1]+r[3])]
-            config.settings.analytics.staff_zones.append(new_z)
-            with open(config.settings.paths.staff_zones_file, 'w', encoding='utf-8') as f:
-                json.dump(config.settings.analytics.staff_zones, f)
+            coords = [int(r[0]), int(r[1]), int(r[0]+r[2]), int(r[1]+r[3])]
+            if is_roi:
+                config.settings.analytics.roi = coords
+                with open(config.settings.paths.roi_file, 'w', encoding='utf-8') as f:
+                    json.dump(coords, f)
+            else:
+                config.settings.analytics.staff_zones.append(coords)
+                with open(config.settings.paths.staff_zones_file, 'w', encoding='utf-8') as f:
+                    json.dump(config.settings.analytics.staff_zones, f)
             self.update_zones_list()
-        cv2.destroyWindow("Drawing Staff Zone")
+        self.video_worker.set_paused(False)
+
+    def _on_selection_cancelled(self):
+        """Обработка отмены выбора зоны."""
         self.video_worker.set_paused(False)
 
     def clear_all(self):

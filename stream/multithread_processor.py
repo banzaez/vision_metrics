@@ -39,24 +39,27 @@ class VideoStream:
                 # "Прогрев" декодера
                 for _ in range(5):
                     self.stream.grab()
-                with self.q.mutex:
-                    self.q.queue.clear()
+                while not self.q.empty():
+                    try:
+                        self.q.get_nowait()
+                    except queue.Empty:
+                        break
                         
-            if not self.q.full():
+            try:
                 ret, frame = self.stream.read()
                 if not ret:
                     self.stop()
                     return
-                self.q.put(frame)
-            else:
+                self.q.put_nowait(frame)
+            except queue.Full:
                 # Sleep a bit to prevent high CPU usage when queue is full
                 time.sleep(0.01)
 
     def read(self):
-        # Return next frame in the queue if available
-        if not self.q.empty():
-            return True, self.q.get()
-        return False, None
+        try:
+            return True, self.q.get_nowait()
+        except queue.Empty:
+            return False, None
 
     def seek(self, seconds):
         # Передаем запрос на перемотку в фоновый поток (во избежание крэша ffmpeg)

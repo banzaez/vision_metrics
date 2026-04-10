@@ -135,7 +135,7 @@ class ReIDGallery:
             return
 
         # Обрезаем галерею если она переполнена
-        if len(self._dead_pool) >= self.cfg.max_gallery_size:
+        while len(self._dead_pool) >= self.cfg.max_gallery_size:
             oldest = min(self._dead_pool, key=lambda k: self._dead_pool[k]["ts"])
             del self._dead_pool[oldest]
             self._reversed_map.pop(oldest, None)

@@ -2,6 +2,7 @@ import json
 import os
 import logging
 import config
+import numpy as np
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                              QLabel, QSizePolicy, QMessageBox, QTabWidget)
 from PyQt6.QtGui import QImage, QPixmap, QShortcut, QKeySequence
@@ -168,9 +169,10 @@ class MainWindow(QMainWindow):
         # Передаем кадр в панель зон по ссылке (оптимизация)
         self.regions_panel.set_current_frame(frame)
         
-        # Конвертация в QImage напрямую из BGR. Оставляем одну системную копию .copy().
+        # Конвертация в QImage. Копируем буфер numpy ДО создания QImage для избежания race condition.
         h, w, ch = frame.shape
-        qt_frame = QImage(frame.data, w, h, ch * w, QImage.Format.Format_BGR888).copy()
+        frame_copy = np.ascontiguousarray(frame.copy())
+        qt_frame = QImage(frame_copy.data, w, h, ch * w, QImage.Format.Format_BGR888)
         
         # Учитываем плотность пикселей для Retina-дисплеев (Mac)
         dpr = self.devicePixelRatioF()

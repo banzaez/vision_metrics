@@ -9,7 +9,8 @@ class ZoneManager:
     
     def update_staff_mask(self, staff_zones, frame_shape):
         h, w = frame_shape[:2]
-        if staff_zones == self._staff_zones_cache and (h, w) == self._staff_mask_shape:
+        
+        if (h, w) == self._staff_mask_shape and staff_zones == self._staff_zones_cache:
             return
             
         if not staff_zones:

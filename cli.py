@@ -255,15 +255,11 @@ def main():
     try:
         success = executor.run()
         
-        if pbar[0]:
-            pbar[0].close()
-        
         elapsed_time = time.time() - start_time
         
         if success:
             logger.info("✅ Обработка успешно завершена!")
             
-            # Получение статистики из data_logger
             stats = {
                 'total_frames': total_frames,
                 'processed_frames': processed_frames,
@@ -278,11 +274,8 @@ def main():
             logger.error("❌ Обработка прервана из-за ошибки.")
             
     except KeyboardInterrupt:
-        if pbar[0]:
-            pbar[0].close()
         logger.warning("\n⚠️ Остановка пользователем (Ctrl+C)...")
         
-        # Сохранение промежуточного JSON при прерывании
         if executor.data_logger:
             try:
                 executor.data_logger.close()
@@ -292,6 +285,14 @@ def main():
         
         executor.stop()
         sys.exit(0)
+        
+    finally:
+        try:
+            if pbar[0]:
+                pbar[0].close()
+        except NameError:
+            pass
+        executor.stop()
 
 if __name__ == "__main__":
     main()

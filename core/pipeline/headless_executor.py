@@ -92,45 +92,45 @@ class HeadlessExecutor:
         batch_frames = []
         batch_ids = []
 
-        while self.running:
-            is_processing_frame = frame_count % cfg_perf.frame_interval == 0
-            
-            if is_processing_frame:
-                ret, frame = cap.read()
-            else:
-                ret = cap.grab()
+        try:
+            while self.running:
+                is_processing_frame = frame_count % cfg_perf.frame_interval == 0
                 
-            if not ret:
-                break
+                if is_processing_frame:
+                    ret, frame = cap.read()
+                else:
+                    ret = cap.grab()
+                    
+                if not ret:
+                    break
+                    
+                frame_count += 1
+                self.monitor.update()
                 
-            frame_count += 1
-            self.monitor.update()
-            
-            if 'on_progress' in self.callbacks:
-                self.callbacks['on_progress'](frame_count)
+                if 'on_progress' in self.callbacks:
+                    self.callbacks['on_progress'](frame_count)
 
-            if is_processing_frame:
-                batch_frames.append(frame)
-                batch_ids.append(frame_count)
+                if is_processing_frame:
+                    batch_frames.append(frame)
+                    batch_ids.append(frame_count)
 
-                # Если набрали батч - в обработку
-                if len(batch_frames) >= self.batch_size:
-                    self._process_and_emit(batch_frames, batch_ids, cfg_analytics)
-                    batch_frames, batch_ids = [], []
+                    if len(batch_frames) >= self.batch_size:
+                        self._process_and_emit(batch_frames, batch_ids, cfg_analytics)
+                        batch_frames, batch_ids = [], []
 
-            # Метрики ресурсов раз в секунду
-            if frame_count % 30 == 0:
-                if 'on_performance' in self.callbacks:
-                    self.callbacks['on_performance'](self.monitor.get_stats())
+                if frame_count % 30 == 0:
+                    if 'on_performance' in self.callbacks:
+                        self.callbacks['on_performance'](self.monitor.get_stats())
 
-        # Дорабатываем остатки батча (если видео закончилось)
-        if batch_frames:
-            self._process_and_emit(batch_frames, batch_ids, cfg_analytics)
+            # Дорабатываем остатки батча
+            if batch_frames:
+                self._process_and_emit(batch_frames, batch_ids, cfg_analytics)
 
-        # Завершение
-        cap.release()
-        self.data_logger.close()
-        logger.info(f"Обработка {filename} завершена. Всего кадров: {frame_count}")
+        finally:
+            cap.release()
+            self.data_logger.close()
+            logger.info(f"Обработка {filename} завершена. Всего кадров: {frame_count}")
+        
         return True
 
     def _process_and_emit(self, frames, ids, cfg_analytics):
