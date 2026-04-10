@@ -170,6 +170,7 @@ class ReIDGallery:
         emb = embedding.flatten().astype(np.float64)
         best_id = None
         best_score = -1.0
+        best_cos_sim = 0.0
 
         for old_id, data in self._dead_pool.items():
             # Уже "занятый" мёртвый ID пропускаем
@@ -190,12 +191,13 @@ class ReIDGallery:
             if score > best_score:
                 best_score = score
                 best_id = old_id
+                best_cos_sim = cos_sim
 
         if best_id is not None:
             self._reversed_map[best_id] = new_id
             logger.info(
                 f"[ReIDGallery] Склейка: new_id={new_id} → old_id={best_id} "
-                f"(cosine={_cosine_similarity(emb, self._dead_pool[best_id]['emb']):.3f})"
+                f"(cosine={best_cos_sim:.3f})"
             )
 
         return best_id
@@ -230,6 +232,16 @@ class ReIDGallery:
             self._reversed_map.pop(tid, None)
         if expired:
             logger.debug(f"[ReIDGallery] Очистка: удалено {len(expired)} устаревших записей")
+
+    def remove_track(self, track_id: int) -> None:
+        """
+        Принудительное удаление трека из всех внутренних структур.
+        Вызывается при эвикции трека из основного хранилища (LRU).
+        """
+        self._live_embeddings.pop(track_id, None)
+        self._dead_pool.pop(track_id, None)
+        self._reversed_map.pop(track_id, None)
+        # Мы не трогаем alias_map, чтобы сохранить цепочки склеек для активных ID
 
     def extract_embeddings_from_tracker(self, tracker) -> dict[int, np.ndarray]:
         """

@@ -81,26 +81,6 @@ class VideoWorker(QObject):
         # Инициализация процессора JSON (путь будет задан ниже, когда узнаем имя файла)
         self.data_logger = JSONDataLogger(output_path="")
 
-        # 1. Ленивая инициализация тяжелых компонентов
-        try:
-            cfg_yolo = config.settings.yolo
-            cfg_perf = config.settings.system.perf
-
-            # Инициализируем оркестратор (здесь может упасть BoxMOT)
-            self.detector = DetectorTracker(
-                model_path=cfg_yolo.weights,
-                camera_id=config.settings.analytics.camera_id,
-                device=cfg_perf.device,
-                half=cfg_perf.half,
-            )
-            self.visualizer = Visualizer()
-        except Exception as e:
-            msg = f"Ошибка инициализации систем анализа: {e}"
-            logger.critical(msg)
-            self.error_occurred.emit(msg)
-            self.finished.emit()
-            return
-
         cfg_sys = config.settings.system
         source = cfg_sys.video_sources[self.source_index]
         is_stream = not (isinstance(source, str) and os.path.isfile(source))
@@ -122,13 +102,40 @@ class VideoWorker(QObject):
             self.finished.emit()
             return
 
-        # Получаем информацию о видео для файлов
+        # 1. Получаем информацию о видео для корректной настройки подсистем
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         fps = cap.get(cv2.CAP_PROP_FPS)
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         
+        # Обновляем глобальный конфиг реальным FPS. Это важно, так как TrackingService
+        # считывает это значение при инициализации для расчета параметров трекера.
+        real_fps = float(fps) if fps > 0 else 25.0
+        config.settings.system.perf.frame_rate = int(real_fps)
+
+        # 2. Теперь инициализируем тяжелые компоненты, когда знаем реальный FPS
+        try:
+            cfg_yolo = config.settings.yolo
+            cfg_perf = config.settings.system.perf
+
+            # Инициализируем оркестратор (теперь с правильным FPS)
+            self.detector = DetectorTracker(
+                model_path=cfg_yolo.weights,
+                camera_id=config.settings.analytics.camera_id,
+                device=cfg_perf.device,
+                half=cfg_perf.half,
+            )
+            self.visualizer = Visualizer()
+        except Exception as e:
+            msg = f"Ошибка инициализации систем анализа: {e}"
+            logger.critical(msg)
+            self.error_occurred.emit(msg)
+            cap.release()
+            self.finished.emit()
+            return
+
         filename = os.path.basename(source) if not is_stream else "stream"
+        # nvr_meta определяется по имени файла
         nvr_meta = parse_nvr_filename(filename) if not is_stream else {}
         camera_id = nvr_meta.get("camera_id", "stream")
 

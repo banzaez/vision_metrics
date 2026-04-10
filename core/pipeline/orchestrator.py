@@ -65,7 +65,8 @@ class DetectorTracker:
 
     def process_batch(self, frames, frame_ids, timestamps=None, roi=None, staff_zones=None):
         """Пакетная обработка кадров (batch mode)."""
-        if not frames: return []
+        if not frames:
+            return []
         self.zone_manager.update_staff_mask(staff_zones or [], frames[0].shape)
 
         processed_inputs = [crop_roi(f, roi)[0] for f in frames]
@@ -90,11 +91,13 @@ class DetectorTracker:
 
         # 1. Фильтрация детекций
         boxes, confs, cls, masks = self._prepare_yolo_data(result, input_frame)
-        if len(boxes) == 0: return [], set()
+        if len(boxes) == 0:
+            return [], set()
 
         # 2. Трекинг
         tracked_objects = self.tracking_service.update(boxes, confs, cls, input_frame)
-        if tracked_objects is None or len(tracked_objects) == 0: return [], set()
+        if tracked_objects is None or len(tracked_objects) == 0:
+            return [], set()
 
         # 3. Re-ID и Stitching
         if self.stitcher:
@@ -141,7 +144,8 @@ class DetectorTracker:
     def _handle_fallback(self, result, x_off, y_off, frame_id):
         """Обработка детекций без треков (если трекер выключен или сбоит)."""
         detections = []
-        if not result.boxes: return detections
+        if not result.boxes:
+            return detections
         
         for i, box in enumerate(result.boxes.xyxy.cpu().numpy()):
             x1, y1, x2, y2 = map(int, box)
@@ -167,3 +171,5 @@ class DetectorTracker:
         while len(self.tracks) > self._max_total_ids:
             tid, _ = self.tracks.popitem(last=False)
             self.role_classifier.remove_track_data(tid)
+            if self.reid_gallery:
+                self.reid_gallery.remove_track(tid)

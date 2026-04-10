@@ -15,6 +15,8 @@ class ReIDStitcher:
         self.gallery = gallery
         self.tracks = person_tracks
         self._prev_active_ids: Set[int] = set()
+        self._missing_counts: Dict[int, int] = {}
+        self._grace_period = 3 # кадра ожидания перед помещением в dead_pool
 
     def update(self, tracked_objects: np.ndarray, tracker: object):
         """
@@ -40,12 +42,23 @@ class ReIDStitcher:
 
         current_ids = set(current_active.keys())
 
-        # 3. Обработка исчезнувших треков (lost)
-        lost_ids = self._prev_active_ids - current_ids
-        for lost_id in lost_ids:
-            person = self.tracks.get(lost_id)
+        # 3. Обработка исчезнувших треков (lost) c GRACE PERIOD
+        # Те, кто были, но исчезли в этом кадре
+        lost_now = self._prev_active_ids - current_ids
+        for tid in lost_now:
+            self._missing_counts[tid] = self._missing_counts.get(tid, 0) + 1
+        
+        # Если трек вернулся — забываем про него
+        for tid in current_ids:
+            self._missing_counts.pop(tid, None)
+
+        # Если трек отсутствует слишком долго — фиксируем потерю
+        to_finalize = [tid for tid, count in self._missing_counts.items() if count >= self._grace_period]
+        for tid in to_finalize:
+            person = self.tracks.get(tid)
             last_bbox = person.last_bbox if person and person.last_bbox else (0, 0, 0, 0)
-            self.gallery.on_track_lost(lost_id, last_bbox)
+            self.gallery.on_track_lost(tid, last_bbox)
+            self._missing_counts.pop(tid)
 
         # 4. Обработка новых треков (match and stitch)
         new_ids = current_ids - self._prev_active_ids
@@ -79,6 +92,7 @@ class ReIDStitcher:
 
         # Наследование параметров
         new_data.ema = old_data.ema
+        new_data.zone_frames = old_data.zone_frames
         new_data.start_frame = old_data.start_frame
         new_data.start_timestamp = old_data.start_timestamp
         
