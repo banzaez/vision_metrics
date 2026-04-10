@@ -13,7 +13,7 @@ class TrackerConfig(BaseTrackerParams):
     """
 
     # Выбор активного трекера
-    type: TrackerType = TrackerType.HYBRIDSORT
+    type: TrackerType = TrackerType.BYTETRACK
 
     # Использовать ли Re-ID
     # Поддерживается в: BoTSORT, BoostTrack, DeepOCSort, StrongSort, HybridSort
