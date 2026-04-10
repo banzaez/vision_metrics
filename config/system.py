@@ -30,7 +30,7 @@ class PerformanceConfig:
 
     # Пропуск кадров для ускорения: обрабатывается только каждый N-й кадр.
     # Эффективный FPS для трекера будет: frame_rate / frame_skip
-    frame_skip: int = 1
+    frame_skip: int = 3
 
     # Количество потоков OpenCV для декодирования и обработки (оптимально: 4-8)
     opencv_threads: int = 4

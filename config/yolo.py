@@ -14,9 +14,10 @@ class YOLOModel:
 
 
 class YOLOImageSize:
-    N = 640
-    S = 960
-    M = 1280
+    S = 640
+    M = 960
+    L = 1280
+    XL = 1536
 
 
 @dataclass
@@ -29,7 +30,7 @@ class YOLOParams:
     weights: str = path_to_models + YOLOModel.YOLO26M_SEG
 
     # Размер изображения для инференса (640, 960, 1280)
-    imgsz: int = YOLOImageSize.S
+    imgsz: int = YOLOImageSize.M
 
     # Порог уверенности: детекции ниже этого значения игнорируются для конечного вывода.
     conf_threshold: float = 0.30

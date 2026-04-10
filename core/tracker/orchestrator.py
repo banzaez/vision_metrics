@@ -122,7 +122,7 @@ class DetectorTracker:
             return detections, active_ids
 
         # 3. Сопоставление масок
-        matches = self.mask_matcher.match_masks(tracked_objects, boxes, masks_np)
+        matches = self.mask_matcher.match_masks(tracked_objects, boxes)
         track_map = {int(obj[4]): obj for obj in tracked_objects}
 
         # 4. Обработка каждого отслеженного объекта через TrackProcessor
