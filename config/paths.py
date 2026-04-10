@@ -9,5 +9,3 @@ class PathsConfig:
     staff_zones_file: str = 'staff_zones.json'
     # Состояние и геометрия главного окна приложения
     window_settings_file: str = "window_settings.json"
-    # Папка с конфигурациями трекеров
-    trackers_dir: str = "config/trackers"
