@@ -12,9 +12,6 @@ class RoleClassifier:
         self.dark_cache = {}
         
     def get_is_dark(self, track_id, mask_index, box, input_frame, masks_np):
-        if masks_np is None:
-            return False
-            
         cached = self.dark_cache.get(track_id)
         current_time = time.time()
         
@@ -27,7 +24,6 @@ class RoleClassifier:
         
         bx1, by1, bx2, by2 = map(int, box)
         h_img, w_img = input_frame.shape[:2]
-        h_mask, w_mask = masks_np.shape[1], masks_np.shape[2]
         is_dark = False
         
         if bx2 > bx1 and by2 > by1:
@@ -36,25 +32,24 @@ class RoleClassifier:
             y2_img = by1 + int(h_box * self.cfg_role.torso_bottom)
             
             if y2_img > y1_img:
-                # ВНИМАНИЕ: Для корректной работы здесь крайне важны retina_masks=True в YOLO.
-                # Если маски приходят в 160x160, автоматическое масштабирование может давать 
-                # "ступеньки" и захватывать фон.
-                
                 crop_f = input_frame[y1_img:y2_img, bx1:bx2]
+                crop_m = None
                 
-                if h_mask == h_img and w_mask == w_img:
-                    # Размеры совпадают (retina_masks=True) - используем прямое кадрирование
-                    crop_m = masks_np[mask_index, y1_img:y2_img, bx1:bx2]
-                else:
-                    # Размеры не совпадают - вычисляем коэффициенты
-                    # Это запасной вариант, если retina_masks почему-то отключены
-                    sw, sh = w_mask / w_img, h_mask / h_img
-                    mx1, mx2 = int(bx1 * sw), int(bx2 * sw)
-                    my1, my2 = int(y1_img * sh), int(y2_img * sh)
-                    
-                    crop_m = masks_np[mask_index, my1:my2, mx1:mx2]
-                    if crop_m.shape != crop_f.shape[:2]:
-                        crop_m = cv2.resize(crop_m, (crop_f.shape[1], crop_f.shape[0]), interpolation=cv2.INTER_LINEAR)
+                if masks_np is not None:
+                    h_mask, w_mask = masks_np.shape[1], masks_np.shape[2]
+                    if h_mask == h_img and w_mask == w_img:
+                        # Размеры совпадают (retina_masks=True) - используем прямое кадрирование
+                        crop_m = masks_np[mask_index, y1_img:y2_img, bx1:bx2]
+                    else:
+                        # Размеры не совпадают - вычисляем коэффициенты
+                        # Это запасной вариант, если retina_masks почему-то отключены
+                        sw, sh = w_mask / w_img, h_mask / h_img
+                        mx1, mx2 = int(bx1 * sw), int(bx2 * sw)
+                        my1, my2 = int(y1_img * sh), int(y2_img * sh)
+                        
+                        crop_m = masks_np[mask_index, my1:my2, mx1:mx2]
+                        if crop_m.shape != crop_f.shape[:2]:
+                            crop_m = cv2.resize(crop_m, (crop_f.shape[1], crop_f.shape[0]), interpolation=cv2.INTER_LINEAR)
                 
                 is_dark = self.classifier.is_dark_clothing(crop_m, crop_f)
         

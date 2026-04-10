@@ -4,14 +4,15 @@ import config
 
 logger = logging.getLogger(__name__)
 
+
 class YOLODetector:
     """Обертка над моделью YOLO для обеспечения инференса и детекции объектов."""
-    
+
     def __init__(self, model_path, device="mps"):
         self.model_path = model_path
         self.device = device
         self._model = None
-        
+
         # Кэширование конфигов
         self.cfg_yolo = config.settings.yolo
         self.cfg_tracker = config.settings.tracker
@@ -26,10 +27,10 @@ class YOLODetector:
     def detect(self, input_data):
         """
         Запуск детекции на кадре или батче кадров.
-        
+
         Args:
             input_data: numpy array (кадр) или list of numpy arrays (батч)
-            
+
         Returns:
             list of Results: Результаты детекции YOLO
         """

@@ -16,7 +16,7 @@ class MaskMatcher:
         Returns:
             list: Список кортежей (track_id, original_idx, iou)
         """
-        if masks_np is None or len(boxes) == 0:
+        if len(boxes) == 0:
             return []
 
         # Предвычисление центров и площадей YOLO-боксов

@@ -52,9 +52,13 @@ class ClothingClassifier:
             hsv = cv2.cvtColor(crop_f, cv2.COLOR_BGR2HSV)
             v_channel = hsv[:, :, 2]
 
-            # Выбираем пиксели силуэта (учитываем только те, где маска уверена > 0.5)
-            # И ИСКЛЮЧАЕМ блики (V > glare_threshold), которые могут "осветлить" черную ткань
-            mask_indices = (crop_mask > 0.5) & (v_channel < self.glare_threshold)
+            # Если маски нет (не SEG модель), используем весь кроп
+            if crop_mask is None:
+                mask_indices = v_channel < self.glare_threshold
+            else:
+                # Выбираем пиксели силуэта (учитываем только те, где маска уверена > 0.5)
+                # И ИСКЛЮЧАЕМ блики (V > glare_threshold), которые могут "осветлить" черную ткань
+                mask_indices = (crop_mask > 0.5) & (v_channel < self.glare_threshold)
 
             # Используем яркость (V channel) для быстрого анализа
             person_pixels_v = hsv[mask_indices][:, 2]
