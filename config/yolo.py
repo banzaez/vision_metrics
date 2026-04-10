@@ -44,3 +44,11 @@ class YOLOParams:
     
     # Использовать высокоточные маски (более медленно, но точнее)
     retina_masks: bool = True
+
+    def __post_init__(self):
+        if self.imgsz < 1:
+            raise ValueError(f"imgsz must be >= 1, got {self.imgsz}")
+        if not (0.0 <= self.conf_threshold <= 1.0):
+            raise ValueError(f"conf_threshold must be in [0.0, 1.0], got {self.conf_threshold}")
+        if not (0.0 <= self.iou_threshold <= 1.0):
+            raise ValueError(f"iou_threshold must be in [0.0, 1.0], got {self.iou_threshold}")

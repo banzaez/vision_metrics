@@ -15,6 +15,18 @@ class IdentificationParams:
     # Максимальное количество ID в памяти для истории
     max_tracked_ids: int = 1000
 
+    def __post_init__(self):
+        if not (0 <= self.black_threshold <= 255):
+            raise ValueError(f"black_threshold must be in [0, 255], got {self.black_threshold}")
+        if not (0 <= self.glare_threshold <= 255):
+            raise ValueError(f"glare_threshold must be in [0, 255], got {self.glare_threshold}")
+        if not (0.0 <= self.dark_ratio_threshold <= 1.0):
+            raise ValueError(f"dark_ratio_threshold must be in [0.0, 1.0], got {self.dark_ratio_threshold}")
+        if self.history_length < 1:
+            raise ValueError(f"history_length must be >= 1, got {self.history_length}")
+        if self.max_tracked_ids < 1:
+            raise ValueError(f"max_tracked_ids must be >= 1, got {self.max_tracked_ids}")
+
 @dataclass
 class RoleParams:
     """Параметры классификации ролей (Персонал / Клиент)."""
@@ -32,6 +44,24 @@ class RoleParams:
     torso_bottom: float = 0.50
     # Порог времени нахождения в зоне персонала (5 сек * ~10 обработанных FPS = 50 кадров)
     staff_zone_threshold_frames: int = 50
+
+    def __post_init__(self):
+        if self.min_eval_frames < 1:
+            raise ValueError(f"min_eval_frames must be >= 1, got {self.min_eval_frames}")
+        if not (0.0 < self.ema_alpha < 1.0):
+            raise ValueError(f"ema_alpha must be in (0.0, 1.0), got {self.ema_alpha}")
+        if not (0.0 <= self.staff_threshold <= 1.0):
+            raise ValueError(f"staff_threshold must be in [0.0, 1.0], got {self.staff_threshold}")
+        if not (0.0 <= self.client_threshold <= 1.0):
+            raise ValueError(f"client_threshold must be in [0.0, 1.0], got {self.client_threshold}")
+        if not (0.0 <= self.hysteresis <= 1.0):
+            raise ValueError(f"hysteresis must be in [0.0, 1.0], got {self.hysteresis}")
+        if not (0.0 <= self.torso_top <= 1.0):
+            raise ValueError(f"torso_top must be in [0.0, 1.0], got {self.torso_top}")
+        if not (0.0 <= self.torso_bottom <= 1.0):
+            raise ValueError(f"torso_bottom must be in [0.0, 1.0], got {self.torso_bottom}")
+        if self.staff_zone_threshold_frames < 1:
+            raise ValueError(f"staff_zone_threshold_frames must be >= 1, got {self.staff_zone_threshold_frames}")
 
 @dataclass
 class AnalyticsConfig:

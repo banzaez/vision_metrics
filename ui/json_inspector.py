@@ -65,7 +65,7 @@ class JsonInspectorWidget(QGroupBox):
         self.splitter.setSizes([100, 800])
 
         self.history = {} # frame_id -> dict
-        self.max_history = 50 # Ограничитель очереди (OOM защита)
+        self.max_history = 1000 # Ограничитель очереди (OOM защита)
 
     @pyqtSlot(int, list)
     def update_json(self, frame_id, detections):
@@ -89,9 +89,9 @@ class JsonInspectorWidget(QGroupBox):
         self.frame_list.addItem(item_text)
 
         # ОГРАНИЧЕНИЕ ИСТОРИИ (OOM Защита)
-        # Мы храним только последние 1000 кадров для живого просмотра.
+        # Мы храним только последние N кадров (max_history) для живого просмотра.
         # Все данные доступны в итоговом JSON файле на диске.
-        if self.frame_list.count() > 1000:
+        if self.frame_list.count() > self.max_history:
             # Удаляем старейший элемент из UI
             old_item = self.frame_list.takeItem(0)
             if old_item:

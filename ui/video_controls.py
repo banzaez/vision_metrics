@@ -129,22 +129,20 @@ class VideoControlPanel(QWidget):
         self.btn_pause.setChecked(not self.btn_pause.isChecked())
         self.toggle_pause(self.btn_pause.isChecked())
 
-    def step_forward(self, frames=None):
-        """Перемотка вперед на N кадров."""
-        if frames is None:
-            frames = config.settings.system.ui.step_frames
+    def _step(self, frames_delta: int):
+        """Общий метод для смещения позиции видео."""
         if self.total_frames > 0:
-            new_pos = min(self.slider.value() + frames, self.total_frames)
+            new_pos = max(0, min(self.slider.value() + frames_delta, self.total_frames))
             self.slider.setValue(new_pos)
             self.video_worker.set_position(new_pos)
             self.update_time_label(new_pos)
 
+    def step_forward(self, frames=None):
+        """Перемотка вперед на N кадров."""
+        step = frames if frames is not None else config.settings.system.ui.step_frames
+        self._step(step)
+
     def step_backward(self, frames=None):
         """Перемотка назад на N кадров."""
-        if frames is None:
-            frames = config.settings.system.ui.step_frames
-        if self.total_frames > 0:
-            new_pos = max(self.slider.value() - frames, 0)
-            self.slider.setValue(new_pos)
-            self.video_worker.set_position(new_pos)
-            self.update_time_label(new_pos)
+        step = frames if frames is not None else config.settings.system.ui.step_frames
+        self._step(-step)

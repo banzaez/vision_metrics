@@ -38,3 +38,32 @@ class SFSortConfig:
     frame_height: Optional[int] = None        # Высота кадра
     horizontal_margin: Optional[int] = None   # Размер горизонтальных полей от края
     vertical_margin: Optional[int] = None     # Размер вертикальных полей от края
+
+    def __post_init__(self):
+        def validate_01(val, name):
+            if val is not None and not (0.0 <= val <= 1.0):
+                raise ValueError(f"{name} must be in [0.0, 1.0], got {val}")
+
+        validate_01(self.high_th, "high_th")
+        validate_01(self.match_th_first, "match_th_first")
+        validate_01(self.new_track_th, "new_track_th")
+        validate_01(self.low_th, "low_th")
+        validate_01(self.match_th_second, "match_th_second")
+        validate_01(self.cth, "cth")
+        
+        if not (0.0 <= self.obb_theta_damping <= 1.0):
+            raise ValueError(f"obb_theta_damping must be in [0.0, 1.0], got {self.obb_theta_damping}")
+            
+        if self.marginal_timeout is not None and self.marginal_timeout < 0:
+            raise ValueError(f"marginal_timeout must be >= 0, got {self.marginal_timeout}")
+        if self.central_timeout is not None and self.central_timeout < 0:
+            raise ValueError(f"central_timeout must be >= 0, got {self.central_timeout}")
+            
+        if self.frame_width is not None and self.frame_width < 0:
+            raise ValueError(f"frame_width must be >= 0, got {self.frame_width}")
+        if self.frame_height is not None and self.frame_height < 0:
+            raise ValueError(f"frame_height must be >= 0, got {self.frame_height}")
+        if self.horizontal_margin is not None and self.horizontal_margin < 0:
+            raise ValueError(f"horizontal_margin must be >= 0, got {self.horizontal_margin}")
+        if self.vertical_margin is not None and self.vertical_margin < 0:
+            raise ValueError(f"vertical_margin must be >= 0, got {self.vertical_margin}")

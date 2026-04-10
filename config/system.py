@@ -35,6 +35,16 @@ class PerformanceConfig:
     # Количество потоков OpenCV для декодирования и обработки (оптимально: 4-8)
     opencv_threads: int = 4
 
+    def __post_init__(self):
+        if self.batch_size < 1:
+            raise ValueError(f"batch_size must be >= 1, got {self.batch_size}")
+        if self.frame_rate <= 0:
+            raise ValueError(f"frame_rate must be > 0, got {self.frame_rate}")
+        if self.frame_interval < 1:
+            raise ValueError(f"frame_interval must be >= 1, got {self.frame_interval}")
+        if self.opencv_threads < 1:
+            raise ValueError(f"opencv_threads must be >= 1, got {self.opencv_threads}")
+
 @dataclass
 class UIConfig:
     """Настройки пользовательского интерфейса и управления."""
@@ -42,6 +52,10 @@ class UIConfig:
     step_frames: int = 125
     # Флаг отображения мониторинга ресурсов (FPS, CPU, GPU, RAM)
     show_monitoring: bool = True
+
+    def __post_init__(self):
+        if self.step_frames < 1:
+            raise ValueError(f"step_frames must be >= 1, got {self.step_frames}")
 
 @dataclass
 class SystemConfig:
