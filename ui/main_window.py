@@ -3,7 +3,7 @@ import os
 import logging
 import config
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-                             QLabel, QGroupBox, QSizePolicy, QMessageBox)
+                             QLabel, QSizePolicy, QMessageBox, QTabWidget)
 from PyQt6.QtGui import QImage, QPixmap, QShortcut, QKeySequence
 from PyQt6.QtCore import Qt, pyqtSlot, QTimer
 
@@ -13,6 +13,7 @@ from ui.stats_panel import StatsPanel
 from ui.video_controls import VideoControlPanel
 from ui.resource_monitor import ResourceMonitorWidget
 from ui.engine_status import EngineStatusWidget
+from ui.json_inspector import JsonInspectorWidget
 
 logger = logging.getLogger(__name__)
 
@@ -38,14 +39,25 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.main_widget)
         self.main_layout = QHBoxLayout(self.main_widget)
 
-        # ЛЕВАЯ ЧАСТЬ: Видео монитор
-        self.video_container = QGroupBox("Video Monitor")
-        self.video_layout = QVBoxLayout(self.video_container)
-        # ПАНЕЛЬ МОНИТОРИНГА РЕСУРСОВ
+        # ЛЕВАЯ ЧАСТЬ: Левая панель с общим монитором и вкладками
+        self.left_panel = QWidget()
+        self.left_layout = QVBoxLayout(self.left_panel)
+        self.left_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # ПАНЕЛЬ МОНИТОРИНГА РЕСУРСОВ (Общая для всех вкладок)
         self.perf_monitor = ResourceMonitorWidget()
         if not config.settings.system.ui.show_monitoring:
             self.perf_monitor.hide()
-        self.video_layout.addWidget(self.perf_monitor)
+        self.left_layout.addWidget(self.perf_monitor)
+
+        # Вкладки
+        self.tabs = QTabWidget()
+        self.left_layout.addWidget(self.tabs)
+        
+        # Вкладка 1: Видео монитор
+        self.video_container = QWidget()
+        self.video_layout = QVBoxLayout(self.video_container)
+        self.video_layout.setContentsMargins(0, 5, 0, 0)
         
         # ПАНЕЛЬ СТАТУСА МОДЕЛЕЙ (Engine Status)
         self.engine_status = EngineStatusWidget()
@@ -62,7 +74,16 @@ class MainWindow(QMainWindow):
         self.video_layout.setSpacing(0) # Убираем зазор между монитором, видео и контролами
         self.video_layout.addWidget(self.video_controls, stretch=0)
         
-        self.main_layout.addWidget(self.video_container, 7)
+        # Добавляем вкладку видео
+        self.tabs.addTab(self.video_container, "Live Video")
+        
+        # Вкладка 2: Инспектор данных JSON
+        self.json_inspector = JsonInspectorWidget()
+        # Убираем внутренние рамки группы для полноэкранной вкладки
+        self.json_inspector.setStyleSheet("QGroupBox { border: none; }")
+        self.tabs.addTab(self.json_inspector, "JSON Data")
+        
+        self.main_layout.addWidget(self.left_panel, 7)
 
         # ПРАВАЯ ЧАСТЬ: Настройки и Статистика
         self.side_panel = QWidget()
@@ -85,6 +106,7 @@ class MainWindow(QMainWindow):
         # Используем QueuedConnection для безопасной передачи данных между потоками.
         self.video_worker.frame_ready.connect(self.update_frame, Qt.ConnectionType.QueuedConnection)
         self.video_worker.stats_updated.connect(self.stats_panel.update_stats, Qt.ConnectionType.QueuedConnection)
+        self.video_worker.json_data_ready.connect(self.json_inspector.update_json, Qt.ConnectionType.QueuedConnection)
         self.video_worker.performance_updated.connect(self.perf_monitor.update_metrics, Qt.ConnectionType.QueuedConnection)
         self.video_worker.error_occurred.connect(self.show_error, Qt.ConnectionType.QueuedConnection)
         

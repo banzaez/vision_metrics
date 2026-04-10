@@ -1,10 +1,10 @@
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QSlider, QLabel
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QSlider, QLabel, QCheckBox
 from PyQt6.QtCore import Qt, pyqtSlot
 import config
 
 class VideoControlPanel(QWidget):
     """
-    Панель управления видео: пауза, перемотка, текущее время.
+    Панель управления видео: пауза, перемотка, текущее время, выбор режима (Live/Max Power).
     """
     def __init__(self, video_worker):
         super().__init__()
@@ -31,6 +31,12 @@ class VideoControlPanel(QWidget):
         self.btn_pause.clicked.connect(self.toggle_pause)
         self.controls_layout.addWidget(self.btn_pause)
         
+        # Чекбокс: Режим максимальной мощности (Headless/Без UI тормозов)
+        self.chk_max_speed = QCheckBox("Max Power 🚀")
+        self.chk_max_speed.setStyleSheet("color: #ff9800; font-weight: bold;")
+        self.chk_max_speed.stateChanged.connect(self.toggle_max_speed)
+        self.controls_layout.addWidget(self.chk_max_speed)
+
         # Слайдер перемотки (стилизованный под тонкую линию)
         self.slider = QSlider(Qt.Orientation.Horizontal)
         self.slider.setEnabled(False)
@@ -103,6 +109,20 @@ class VideoControlPanel(QWidget):
 
     def update_time_label(self, current):
         self.lbl_time.setText(f"{current} / {self.total_frames}")
+
+    @pyqtSlot(int)
+    def toggle_max_speed(self, state):
+        """Переключает воркер в режим максимальной производительности (без отрисовки)."""
+        is_enabled = state == Qt.CheckState.Checked.value
+        self.video_worker.set_max_speed(is_enabled)
+        
+        # Визуальная обратная связь
+        if is_enabled:
+            self.lbl_hint.setText("🚀 РЕЖИМ МАКСИМАЛЬНОЙ МОЩНОСТИ ВКЛЮЧЕН (БЕЗ ВИДЕО)")
+            self.lbl_hint.setStyleSheet("color: #ff9800; font-size: 10px; font-weight: bold;")
+        else:
+            self.lbl_hint.setText("Space: пауза/старт  |  ⬅ ➡: перемотка на 5 сек")
+            self.lbl_hint.setStyleSheet("color: #888; font-size: 10px; font-weight: 500;")
 
     def trigger_pause(self):
         """Программное переключение паузы (для пробела)."""

@@ -32,22 +32,22 @@ class StatsPanel(QGroupBox):
     def update_stats(self, detections):
         """
         Обновляет таблицу на основе списка детекций.
-        Сортировка: STAFF -> CLIENT -> GHOST.
+        Сортировка: STAFF -> CLIENT -> RAW.
         """
         def get_priority(det):
-            if det.get("is_ghost"):
-                return 2
-            if det.get("type", "").upper() == "STAFF":
+            tp = det.get("type", "").upper()
+            if tp == "STAFF":
                 return 0
-            return 1
+            if tp == "CLIENT":
+                return 1
+            return 2
 
         sorted_detections = sorted(detections, key=get_priority)
         self.table.setRowCount(len(sorted_detections))
 
         for row, det in enumerate(sorted_detections):
-            is_ghost = det.get("is_ghost", False)
             tid = f"#{det.get('track_id', '?')}"
-            dtype = "GHOST" if is_ghost else det.get("type", "person").upper()
+            dtype = det.get("type", "person").upper()
 
             # Форматируем время в "ММ:СС"
             lifetime_s = det.get("lifetime", 0)
@@ -67,13 +67,13 @@ class StatsPanel(QGroupBox):
             id_item, type_item, time_item = items
             time_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 
-            if is_ghost:
-                color = Qt.GlobalColor.gray
-            elif dtype == "STAFF":
+            if dtype == "STAFF":
                 color = Qt.GlobalColor.yellow
-            else:
+            elif dtype == "CLIENT":
                 color = Qt.GlobalColor.blue
+            else:
+                color = Qt.GlobalColor.gray
 
             type_item.setForeground(color)
-            id_item.setForeground(Qt.GlobalColor.white if not is_ghost else color)
-            time_item.setForeground(Qt.GlobalColor.white if not is_ghost else color)
+            id_item.setForeground(Qt.GlobalColor.white)
+            time_item.setForeground(Qt.GlobalColor.white)

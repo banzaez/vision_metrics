@@ -10,6 +10,7 @@ os.environ["OPENCV_VIDEOIO_LOG_LEVEL"] = "0"
 from PyQt6.QtCore import QObject, pyqtSignal
 import config
 from core.pipeline.orchestrator import DetectorTracker
+from core.analytics.data_logger import JSONDataLogger
 from utils.visualizer import Visualizer
 from utils.monitor import ResourceMonitor
 
@@ -26,6 +27,7 @@ class VideoWorker(QObject):
     # Сигналы для передачи данных в UI
     frame_ready = pyqtSignal(object)  # Отправляет отрисованный кадр
     stats_updated = pyqtSignal(list)  # Отправляет список текущих детекций
+    json_data_ready = pyqtSignal(int, list) # Отправляет сырые словари для JSON просмотра
     performance_updated = pyqtSignal(dict)  # Отправляет метрики CPU/RAM/FPS
     position_changed = pyqtSignal(int)  # Текущий кадр
     duration_ready = pyqtSignal(int)  # Общее кол-во кадров
@@ -42,19 +44,40 @@ class VideoWorker(QObject):
         self._seek_position = -1
         self._batch_buffer = []
 
+        self.max_speed_mode = False # Режим максимальной скорости обработки без UI-отрисовки
+
         self.detector = None
         self.visualizer = None
         self.monitor = ResourceMonitor()
 
         self.frame_count = 0
         self.last_detections = []
+        self.data_logger = None  # Инициализируется в run()
+        
+        # Инфо о видео для экспорта
+        self.video_metadata = {
+            "camera_id": "unknown",
+            "filename": "",
+            "fps": 0.0,
+            "width": 0,
+            "height": 0,
+            "total_frames": 0
+        }
         logger.info(f"VideoWorker инициализирован для источника #{source_index}")
+
+    def set_max_speed(self, enabled):
+        """Включает или выключает режим максимальной мощности обработки без визуализации."""
+        self.max_speed_mode = enabled
+        logger.info(f"Режим Max Speed установлен в: {enabled}")
 
     def run(self):
         """
         Основной цикл обработки видео.
         Читает кадры, проводит инференс, собирает статистику и отправляет в UI.
         """
+        # Инициализация процессора JSON (путь будет задан ниже, когда узнаем имя файла)
+        self.data_logger = JSONDataLogger(output_path="")
+
         # 1. Ленивая инициализация тяжелых компонентов
         try:
             cfg_yolo = config.settings.yolo
@@ -99,10 +122,43 @@ class VideoWorker(QObject):
         # Получаем информацию о видео для файлов
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         fps = cap.get(cv2.CAP_PROP_FPS)
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        
+        # Извлекаем Camera ID из имени файла (например, Camera_01_...)
+        filename = os.path.basename(source) if not is_stream else "stream"
+        camera_id = "stream"
+        if not is_stream:
+            # Берем часть до первого крупного разделителя или расширения
+            camera_id = filename.split('_')[0] if '_' in filename else filename.split('.')[0]
+        
+        self.video_metadata.update({
+            "camera_id": camera_id,
+            "filename": filename,
+            "fps": float(fps) if fps > 0 else 25.0,
+            "width": width,
+            "height": height,
+            "total_frames": total_frames
+        })
+
+        # Определяем путь для сохранения JSON-отчета на основе имени видео
+        json_filename = os.path.splitext(filename)[0] + ".json"
+        self.data_logger.output_path = os.path.join("data", json_filename)
+
+        # Открываем логгер с актуальными метаданными
+        self.data_logger.metadata = self.video_metadata
+        self.data_logger.open()
+
+        # Передаем автоматически определенный camera_id в детектор/оркестратор
+        if self.detector:
+            self.detector.camera_id = camera_id
+            if hasattr(self.detector, 'track_processor'):
+                self.detector.track_processor.camera_id = camera_id
+
         if total_frames > 0:
             self.duration_ready.emit(total_frames)
             self._fps_cache = fps if fps > 0 else 25.0
-            logger.info(f"Видеофайл: {total_frames} кадров, {fps} FPS")
+            logger.info(f"Видеофайл: {camera_id} | {total_frames} кадров, {fps} FPS")
         else:
             self._fps_cache = 25.0  # Дефолт для стримов
 
@@ -185,24 +241,27 @@ class VideoWorker(QObject):
             if cfg_ui.show_monitoring and self.frame_count % 10 == 0:
                 self.performance_updated.emit(self.monitor.get_stats())
 
-            vis_frame = self.visualizer.draw(
-                frame,
-                detections,
-                roi=cfg_analytics.roi,
-                staff_auto_zones=cfg_analytics.staff_zones,
-            )
+            if not self.max_speed_mode:
+                vis_frame = self.visualizer.draw(
+                    frame,
+                    detections,
+                    roi=cfg_analytics.roi,
+                    staff_auto_zones=cfg_analytics.staff_zones,
+                )
 
-            # 5. Передача результатов
-            self.frame_ready.emit(vis_frame)
+                # 5. Передача результатов
+                self.frame_ready.emit(vis_frame)
 
-            # Для файлов добавляем адаптивную задержку, учитывая время обработки
-            if not is_stream and fps > 0:
-                elapsed = time.perf_counter() - iteration_start
-                delay = max(0, (1 / fps) - elapsed)
-                if delay > 0:
-                    time.sleep(delay)
+                # Для файлов добавляем адаптивную задержку, учитывая время обработки
+                if not is_stream and fps > 0:
+                    elapsed = time.perf_counter() - iteration_start
+                    delay = max(0, (1 / fps) - elapsed)
+                    if delay > 0:
+                        time.sleep(delay)
 
         cap.release()
+        if self.data_logger:
+            self.data_logger.close()
         self.finished.emit()
 
     def _apply_detections(self, detections, active_ids):
@@ -220,6 +279,20 @@ class VideoWorker(QObject):
         cfg_perf = config.settings.system.perf
         if self.frame_count > 0 and self.frame_count % (cfg_perf.frame_skip * 3) == 0:
             self.stats_updated.emit(detections)
+            
+        # 3. Вывод JSON на каждый обработанный кадр (через DataLogger)
+        if detections:
+            # Эмитим данные в UI
+            self.json_data_ready.emit(self.frame_count, detections)
+            
+            if self.data_logger:
+                # Все данные о видео уже лежат в metadata логгера,
+                # сюда передаем только специфику конкретного кадра
+                self.data_logger.log_frame(
+                    frame_id=self.frame_count,
+                    objects=detections,
+                    flush=not self.max_speed_mode
+                )
 
     def stop(self):
         """Остановка цикла обработки."""

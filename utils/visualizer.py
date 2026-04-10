@@ -55,8 +55,6 @@ class Visualizer:
 
         # 4. Отрисовка детекций (людей)
         for det in detections:
-            if det.get('is_ghost'):
-                continue
             x1, y1, x2, y2 = det['bbox']
             track_id = det['track_id']
             ptype = det['type']

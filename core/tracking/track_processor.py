@@ -62,19 +62,14 @@ class TrackProcessor:
         # Обновляем позицию в LRU-кэше
         self.tracks.move_to_end(track_id)
 
-        return {
-            "track_id": track_id,
-            "camera_id": self.camera_id,
-            "frame_id": frame_id,
-            "bbox": (x1, y1, x2, y2),
-            "timestamp": timestamp,
+        base_dict = td.to_dict(frame_id, timestamp)
+        base_dict.update({
             "conf": float(conf),
-            "type": p_type,
             "type_confidence": type_conf,
             "type_confidence_calibrated": type_conf_cal,
-            "lifetime_frames": frame_id - td.start_frame,
-            "is_ghost": False
-        }
+            "lifetime_frames": frame_id - td.start_frame
+        })
+        return base_dict
 
     def _get_or_create_track(self, track_id, current_frame_id, timestamp):
         """Получение существующего или создание нового объекта PersonData."""

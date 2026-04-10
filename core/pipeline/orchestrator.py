@@ -265,8 +265,7 @@ class DetectorTracker:
                     "frame_id": frame_id,
                     "bbox": (x1 + x_off, y1 + y_off, x2 + x_off, y2 + y_off),
                     "conf": float(result.boxes.conf[i]),
-                    "type": "unknown",
-                    "is_ghost": True
+                    "type": "RAW"
                 })
         return detections
 
