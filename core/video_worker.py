@@ -218,7 +218,7 @@ class VideoWorker(QObject):
         # (Прореживаем обновление статистики в таблице для экономии CPU в UI)
         self.last_detections = detections
         cfg_perf = config.settings.system.perf
-        if self.frame_count % (cfg_perf.frame_skip * 3) == 0:
+        if self.frame_count > 0 and self.frame_count % (cfg_perf.frame_skip * 3) == 0:
             self.stats_updated.emit(detections)
 
     def stop(self):

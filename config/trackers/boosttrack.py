@@ -1,7 +1,4 @@
 from dataclasses import dataclass
-from config.system import PerformanceConfig
-
-perf = PerformanceConfig()
 
 
 @dataclass
@@ -16,7 +13,6 @@ class BoostTrackConfig:
     min_conf: float = 0.1  # Минимальный порог для учета объекта
     match_thresh: float = 0.3  # Порог IoU для сопоставления
     track_buffer: int = 120  # Сколько кадров помнить объект (max_age)
-    frame_rate: int = perf.frame_rate // perf.frame_skip
 
     # --- Специфичные параметры BoostTrack ---
     use_ecc: bool = False  # Компенсация движения камеры (убирает "тряску" ID)

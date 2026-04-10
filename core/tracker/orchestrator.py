@@ -6,7 +6,6 @@ import config
 
 from .role_classifier import RoleClassifier
 from .zone_manager import ZoneManager
-from .mask_matcher import MaskMatcher
 from .yolo_detector import YOLODetector
 from .tracking_service import TrackingService
 from .track_processor import TrackProcessor
@@ -29,7 +28,6 @@ class DetectorTracker:
         self.tracking_service = TrackingService(device, half)
         self.role_classifier = RoleClassifier()
         self.zone_manager = ZoneManager()
-        self.mask_matcher = MaskMatcher()
 
         # Состояние и история
         self.tracks = OrderedDict()  # track_id -> PersonData
@@ -90,8 +88,8 @@ class DetectorTracker:
         for res, inp_frame, (x_off, y_off), f_id, ts in zip(results, processed_inputs, offsets, frame_ids, ts_list):
             batch_output.append(self._analyze_results(res, inp_frame, x_off, y_off, f_id, ts))
             self._frame_count += 1
+            self._cleanup_lru()
 
-        self._cleanup_lru()
         return batch_output
 
     def _analyze_results(self, result, input_frame, x_off, y_off, current_frame_id, timestamp):
@@ -99,7 +97,7 @@ class DetectorTracker:
         detections, active_ids = [], set()
 
         if self.tracking_service.tracker is None or result.boxes is None or len(result.boxes) == 0:
-            return self._handle_fallback(result, x_off, y_off), active_ids
+            return self._handle_fallback(result, x_off, y_off, current_frame_id), active_ids
 
         # 1. Получение и фильтрация данных YOLO
         boxes = result.boxes.xyxy.cpu().numpy()
@@ -121,14 +119,10 @@ class DetectorTracker:
         if tracked_objects is None or len(tracked_objects) == 0:
             return detections, active_ids
 
-        # 3. Сопоставление масок
-        matches = self.mask_matcher.match_masks(tracked_objects, boxes)
-        track_map = {int(obj[4]): obj for obj in tracked_objects}
-
-        # 4. Обработка каждого отслеженного объекта через TrackProcessor
-        for match in matches:
-            det = self.track_processor.process_match(
-                match, track_map, boxes, masks_np, input_frame, x_off, y_off, current_frame_id, timestamp
+        # 3. Обработка каждого отслеженного объекта через TrackProcessor
+        for obj in tracked_objects:
+            det = self.track_processor.process_track(
+                obj, boxes, masks_np, input_frame, x_off, y_off, current_frame_id, timestamp
             )
             if det:
                 detections.append(det)
@@ -138,14 +132,21 @@ class DetectorTracker:
 
 
 
-    def _handle_fallback(self, result, x_off, y_off):
+    def _handle_fallback(self, result, x_off, y_off, frame_id):
         detections = []
         if result.boxes is not None:
             for i, box in enumerate(result.boxes.xyxy.cpu().numpy()):
                 x1, y1, x2, y2 = map(int, box)
+                # Генерируем уникальный временный ID для этого кадра, чтобы избежать конфликтов
+                temp_id = -(frame_id * 1000 + i + 1)
                 detections.append({
-                    "track_id": -(i + 1), "bbox": (x1 + x_off, y1 + y_off, x2 + x_off, y2 + y_off),
-                    "conf": float(result.boxes.conf[i]), "type": "unknown", "is_ghost": False
+                    "track_id": temp_id,
+                    "camera_id": self.camera_id,
+                    "frame_id": frame_id,
+                    "bbox": (x1 + x_off, y1 + y_off, x2 + x_off, y2 + y_off),
+                    "conf": float(result.boxes.conf[i]),
+                    "type": "unknown",
+                    "is_ghost": True
                 })
         return detections
 

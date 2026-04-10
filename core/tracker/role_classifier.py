@@ -1,4 +1,5 @@
 import cv2
+from collections import OrderedDict
 import config
 from core.classifier import ClothingClassifier
 
@@ -8,7 +9,8 @@ class RoleClassifier:
         self.cfg_role = config.settings.analytics.role
         cfg_ident = config.settings.analytics.ident
         self.classifier = ClothingClassifier(dark_threshold=cfg_ident.black_threshold)
-        self.dark_cache = {}
+        self.dark_cache = OrderedDict()
+        self._max_cache_size = cfg_ident.max_tracked_ids
         
     def get_is_dark(self, track_id, mask_index, box, input_frame, masks_np, current_frame_id=None):
         cached = self.dark_cache.get(track_id)
@@ -17,6 +19,8 @@ class RoleClassifier:
             cached_value, last_frame = cached
             # Кэшируем результат на 15 кадров
             if current_frame_id - last_frame < 15:
+                # Обновляем позицию в OrderedDict
+                self.dark_cache.move_to_end(track_id)
                 return cached_value
         
         bx1, by1, bx2, by2 = map(int, box)
@@ -36,7 +40,10 @@ class RoleClassifier:
                     h_mask, w_mask = masks_np.shape[1], masks_np.shape[2]
                     if h_mask == h_img and w_mask == w_img:
                         # Размеры совпадают (retina_masks=True) - используем прямое кадрирование
-                        crop_m = masks_np[mask_index, y1_img:y2_img, bx1:bx2]
+                        if mask_index < len(masks_np):
+                            crop_m = masks_np[mask_index, y1_img:y2_img, bx1:bx2]
+                        else:
+                            crop_m = None
                     else:
                         # Размеры не совпадают - вычисляем коэффициенты
                         # Это запасной вариант, если retina_masks почему-то отключены
@@ -44,13 +51,23 @@ class RoleClassifier:
                         mx1, mx2 = int(bx1 * sw), int(bx2 * sw)
                         my1, my2 = int(y1_img * sh), int(y2_img * sh)
                         
-                        crop_m = masks_np[mask_index, my1:my2, mx1:mx2]
-                        if crop_m.shape != crop_f.shape[:2]:
+                        if mask_index < len(masks_np):
+                            crop_m = masks_np[mask_index, my1:my2, mx1:mx2]
+                        else:
+                            crop_m = None
+
+                        if crop_m is not None and crop_m.shape != crop_f.shape[:2]:
                             crop_m = cv2.resize(crop_m, (crop_f.shape[1], crop_f.shape[0]), interpolation=cv2.INTER_LINEAR)
                 
                 is_dark = self.classifier.is_dark_clothing(crop_m, crop_f)
         
         self.dark_cache[track_id] = (is_dark, current_frame_id if current_frame_id is not None else 0)
+        self.dark_cache.move_to_end(track_id)
+        
+        # Ограничение размера кэша
+        if len(self.dark_cache) > self._max_cache_size:
+            self.dark_cache.popitem(last=False)
+
         return is_dark
 
     def classify_person_type(self, is_dark, current_ema, type_history_len, 

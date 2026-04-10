@@ -14,16 +14,22 @@ class TrackProcessor:
         self.tracks = tracks_storage
         self.history_length = history_length
 
-    def process_match(self, match, track_map, boxes, masks_np, input_frame, x_off, y_off, frame_id, timestamp):
-        """Обработка одного вхождения (match) от трекера."""
-        track_id, original_idx, iou = match
-        obj = track_map.get(track_id)
-        if obj is None:
-            return None
+    def process_track(self, obj, boxes, masks_np, input_frame, x_off, y_off, frame_id, timestamp):
+        """Обработка одного трека от трекера."""
+        # obj format: [x1, y1, x2, y2, track_id, conf, cls, det_ind]
+        tx1, ty1, tx2, ty2 = obj[:4]
+        track_id = int(obj[4])
+        conf = obj[5]
+        # 8-й столбец содержит индекс исходной детекции (если есть)
+        det_valid = len(obj) > 7 and 0 <= int(obj[7]) < len(boxes)
+        det_ind = int(obj[7]) if det_valid else -1
 
         # 1. Извлечение геометрии и трансформация координат
-        tx1, ty1, tx2, ty2, _, conf, _ = obj[:7]
-        orig_box = boxes[original_idx] if original_idx != -1 else (tx1, ty1, tx2, ty2)
+        if det_ind != -1:
+            orig_box = boxes[det_ind]
+        else:
+            # Если индекса нет, используем предсказание трекера (приводим к int)
+            orig_box = (int(tx1), int(ty1), int(tx2), int(ty2))
         
         x1, x2 = int(tx1) + x_off, int(tx2) + x_off
         y1, y2 = int(ty1) + y_off, int(ty2) + y_off
@@ -32,14 +38,18 @@ class TrackProcessor:
         cx, cy = (x1 + x2) // 2, y2
         in_staff_zone = self.zone_manager.is_in_staff_zone(cx, cy)
         is_dark = self.role_classifier.get_is_dark(
-            track_id, original_idx, orig_box, input_frame, masks_np if original_idx != -1 else None,
+            track_id, det_ind, orig_box, input_frame, masks_np if det_ind != -1 else None,
             current_frame_id=frame_id
         )
 
         # 3. Обновление состояния трека
         td = self._get_or_create_track(track_id, frame_id, timestamp)
         td.zone_frames = td.zone_frames + 1 if in_staff_zone else 0
-        td.last_bbox, td.last_frame_id = (x1, y1, x2, y2), frame_id
+        
+        # Обновление истории координат
+        td.prev_bbox = td.last_bbox
+        td.last_bbox = (x1, y1, x2, y2)
+        td.last_frame_id = frame_id
         
         # 4. Классификация роли по истории (EMA)
         td.history.append(is_dark)

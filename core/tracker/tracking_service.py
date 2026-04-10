@@ -1,13 +1,10 @@
-from boxmot import SFSORT
-from boxmot import BoostTrack
-from boxmot import OcSort
-from boxmot import HybridSort
-from boxmot import DeepOcSort
-from boxmot import StrongSort
+from boxmot import (
+    SFSORT, BoostTrack, OcSort, HybridSort, 
+    DeepOcSort, StrongSort, BotSort, ByteTrack
+)
+import numpy as np
 from dataclasses import asdict
 import logging
-import numpy as np
-from boxmot import BotSort, ByteTrack
 
 import config
 from config.tracker import TrackerType
@@ -37,6 +34,10 @@ class TrackingService:
 
             params["with_reid"] = self.cfg_tracker.with_reid
             params["reid_weights"] = self.cfg_tracker.reid_model
+
+            # Динамически вычисляем фреймрейт с учетом пропуска кадров
+            cfg_perf = config.settings.system.perf
+            params["frame_rate"] = cfg_perf.frame_rate // cfg_perf.frame_skip
 
             match tracker_type:
                 case TrackerType.BOTSORT:
