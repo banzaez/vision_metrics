@@ -14,16 +14,24 @@ def get_optimal_device() -> str:
 @dataclass
 class PerformanceConfig:
     """Настройки производительности и вычислительного устройства."""
+
     # Устройство вычислений ('cpu', 'cuda', 'mps' для Mac)
     device: str = field(default_factory=get_optimal_device)
+
+    # FP16 режим (рекомендуется для Mac M1)
+    half: bool = True
+
     # Размер пакета кадров для YOLO (batch size).
     # При 1 - минимальная задержка, при > 1 - выше пропускная способность.
     batch_size: int = 1
+
     # Фреймрейт исходного видео (кадров в секунду)
     frame_rate: int = 25
+
     # Пропуск кадров для ускорения: обрабатывается только каждый N-й кадр.
-    # Эффективный FPS для трекера будет: frame_rate / (frame_skip + 1)
+    # Эффективный FPS для трекера будет: frame_rate / frame_skip
     frame_skip: int = 1
+
     # Количество потоков OpenCV для декодирования и обработки (оптимально: 4-8)
     opencv_threads: int = 4
 

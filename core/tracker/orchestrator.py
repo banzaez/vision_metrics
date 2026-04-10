@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 class DetectorTracker:
     """Оркестратор трекинга объектов: объединяет детекцию, трекинг и бизнес-логику (роли, зоны)."""
 
-    def __init__(self, model_path, camera_id="0", device="mps"):
+    def __init__(self, model_path, camera_id="0", device="mps", half=False):
         cfg_ident = config.settings.analytics.ident
 
         # Идентификация источника
@@ -26,7 +26,7 @@ class DetectorTracker:
 
         # Подсистемы
         self.detector = YOLODetector(model_path, device)
-        self.tracking_service = TrackingService(device)
+        self.tracking_service = TrackingService(device, half)
         self.role_classifier = RoleClassifier()
         self.zone_manager = ZoneManager()
         self.mask_matcher = MaskMatcher()

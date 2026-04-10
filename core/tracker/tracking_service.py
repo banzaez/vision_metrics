@@ -1,3 +1,9 @@
+from boxmot import SFSORT
+from boxmot import BoostTrack
+from boxmot import OcSort
+from boxmot import HybridSort
+from boxmot import DeepOcSort
+from boxmot import StrongSort
 from dataclasses import asdict
 import logging
 import numpy as np
@@ -12,8 +18,9 @@ logger = logging.getLogger(__name__)
 class TrackingService:
     """Обертка над внешним трекером (BoxMOT) для управления жизненным циклом треков."""
 
-    def __init__(self, device="mps"):
+    def __init__(self, device="mps", half=False):
         self.device = device
+        self.half = half
         self.cfg_tracker = config.settings.tracker
         self.tracker = self._init_tracker()
 
@@ -21,22 +28,39 @@ class TrackingService:
         try:
             tracker_type = self.cfg_tracker.type
             tracker_cfg_obj = self.cfg_tracker.config
-            
+
             # Превращаем dataclass в словарь параметров
             params = asdict(tracker_cfg_obj)
-            
-            # Если в конфиге трекера девайс не задан, берем переданный в сервис
-            if params.get("device") is None:
-                params["device"] = self.device
 
-            if tracker_type == TrackerType.BOTSORT:
-                tracker = BotSort(**params)
-            elif tracker_type == TrackerType.BYTETRACK:
-                tracker = ByteTrack(**params)
-            else:
-                raise ValueError(f"Тип трекера {tracker_type} не поддерживается.")
+            params["device"] = self.device
+            params["half"] = self.half
 
-            logger.info(f"Трекер BoxMOT ({tracker_type.value}) инициализирован с использованием Python-конфига.")
+            params["with_reid"] = self.cfg_tracker.with_reid
+            params["reid_weights"] = self.cfg_tracker.reid_model
+
+            match tracker_type:
+                case TrackerType.BOTSORT:
+                    tracker = BotSort(**params)
+                case TrackerType.BYTETRACK:
+                    tracker = ByteTrack(**params)
+                case TrackerType.BOOSTTRACK:
+                    tracker = BoostTrack(**params)
+                case TrackerType.STRONGSORT:
+                    tracker = StrongSort(**params)
+                case TrackerType.DEEPOCSORT:
+                    tracker = DeepOcSort(**params)
+                case TrackerType.HYBRIDSORT:
+                    tracker = HybridSort(**params)
+                case TrackerType.OCSORT:
+                    tracker = OcSort(**params)
+                case TrackerType.SFSORT:
+                    tracker = SFSORT(**params)
+                case _:
+                    raise ValueError(f"Тип трекера {tracker_type} не поддерживается.")
+
+            logger.info(
+                f"Трекер BoxMOT ({tracker_type.value}) инициализирован с использованием Python-конфига."
+            )
             return tracker
         except Exception as e:
             msg = f"Ошибка инициализации BoxMOT: {e}"
@@ -60,8 +84,7 @@ class TrackingService:
             return None
 
         # Подготовка данных для BoxMOT [N, 6] (x1, y1, x2, y2, conf, cls)
-        # Принудительно используем float64 для стабильности на Apple Silicon
-        dets = np.zeros((len(boxes), 6), dtype=np.float64)
+        dets = np.zeros((len(boxes), 6))
         dets[:, :4] = boxes
         dets[:, 4] = confs
         dets[:, 5] = cls

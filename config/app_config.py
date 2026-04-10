@@ -4,7 +4,7 @@ import logging
 from dataclasses import dataclass, field
 from .system import SystemConfig
 from .yolo import YOLOParams
-from .tracker import TrackerParams
+from .tracker import TrackerConfig
 from .paths import PathsConfig
 from .analytics import AnalyticsConfig
 
@@ -19,7 +19,7 @@ class AppConfig:
     """
     system: SystemConfig = field(default_factory=SystemConfig)
     yolo: YOLOParams = field(default_factory=YOLOParams)
-    tracker: TrackerParams = field(default_factory=TrackerParams)
+    tracker: TrackerConfig = field(default_factory=TrackerConfig)
     paths: PathsConfig = field(default_factory=PathsConfig)
     analytics: AnalyticsConfig = field(default_factory=AnalyticsConfig)
 
