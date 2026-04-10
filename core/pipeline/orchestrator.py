@@ -4,13 +4,13 @@ import time
 import numpy as np
 import config
 
-from .role_classifier import RoleClassifier
-from .zone_manager import ZoneManager
-from .yolo_detector import YOLODetector
-from .tracker.tracking_service import TrackingService
-from .tracker.track_processor import TrackProcessor
-from .tracker.reid_gallery import ReIDGallery
-from .utils import crop_roi, filter_detections
+from core.analytics.role_classifier import RoleClassifier
+from core.analytics.zone_manager import ZoneManager
+from core.detection.yolo_detector import YOLODetector
+from core.tracking.tracking_service import TrackingService
+from core.tracking.track_processor import TrackProcessor
+from core.tracking.reid_gallery import ReIDGallery
+from core.utils import crop_roi, filter_detections
 
 logger = logging.getLogger(__name__)
 

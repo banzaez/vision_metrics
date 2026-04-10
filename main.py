@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import QThread
 import config
 from ui.main_window import MainWindow
-from core.video_worker import VideoWorker
+from core.pipeline.video_worker import VideoWorker
 
 # Настройка многопоточности OpenCV (надо вызвать до загрузки каких-либо моделей)
 if hasattr(cv2, 'setNumThreads'):

@@ -16,7 +16,7 @@ class ResourceMonitorWidget(QFrame):
             }
             QLabel {
                 color: #e0e0e0;
-                font-family: 'Segoe UI', 'Ubuntu', sans-serif;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
                 font-size: 12px;
             }
             #title { font-weight: bold; color: #888; text-transform: uppercase; font-size: 10px; }

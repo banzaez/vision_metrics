@@ -6,7 +6,7 @@ from config.trackers.boosttrack import BoostTrackConfig
 from config.trackers.botsort import BotSortConfig
 from config.trackers.bytetrack import ByteTrackConfig
 from config.trackers.deepocsort import DeepOcSortConfig
-from config.trackers.hybridmot import HybridSortConfig
+from config.trackers.hybridsort import HybridSortConfig
 from config.trackers.ocsort import OcSortConfig
 from config.trackers.sfsort import SFSortConfig
 from config.trackers.strongsort import StrongSortConfig

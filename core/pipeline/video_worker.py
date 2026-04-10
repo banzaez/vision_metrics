@@ -9,7 +9,7 @@ os.environ["OPENCV_VIDEOIO_LOG_LEVEL"] = "0"
 
 from PyQt6.QtCore import QObject, pyqtSignal
 import config
-from core import DetectorTracker
+from core.pipeline.orchestrator import DetectorTracker
 from utils.visualizer import Visualizer
 from utils.monitor import ResourceMonitor
 

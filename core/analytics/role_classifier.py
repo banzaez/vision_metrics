@@ -1,7 +1,7 @@
 import cv2
 from collections import OrderedDict
 import config
-from core.classifier import ClothingClassifier
+from .classifier import ClothingClassifier
 
 class RoleClassifier:
     """Управление классификацией персонала и клиентов на базе K-Means цвета и EMA-истории."""
