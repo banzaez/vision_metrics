@@ -25,11 +25,13 @@ logger = logging.getLogger("VisionMetrics")
 def main():
     """
     Точка входа в приложение Vision Metrics.
-    Создает приложение PyQt, настраивает многопоточность для 
-    разгрузки интерфейса от тяжелых задач по компьютерному зрению,
-    показывает основное окно и запускает цикл обработки.
     """
-    app = QApplication(sys.argv)
+    try:
+        app = QApplication(sys.argv)
+    except Exception as e:
+        logger.critical(f"Критическая ошибка: Не удалось инициализировать GUI (QApplication). {e}")
+        logger.info("Убедитесь, что доступен графический дисплей (X11/Wayland/Quartz) или используйте headless-режим.")
+        sys.exit(1)
     
     # 1. Создание фонового потока и рабочего объекта (Worker) для обработки видео
     thread = QThread()

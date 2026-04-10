@@ -11,8 +11,8 @@ class PersonData:
     last_frame_id: int
     start_timestamp: float
     
-    # История классификации (is_dark)
-    history: Deque[bool] = field(default_factory=lambda: deque())
+    # История классификации (is_dark) — ограничена maxlen=300 по умолчанию для защиты от OOM
+    history: Deque[bool] = field(default_factory=lambda: deque(maxlen=300))
     
     # EMA для вероятности роли (staff/client)
     ema: float = 0.5

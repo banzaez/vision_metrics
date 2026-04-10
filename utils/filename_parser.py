@@ -1,5 +1,8 @@
 import os
+import logging
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 def parse_nvr_filename(filename):
     """
@@ -32,7 +35,7 @@ def parse_nvr_filename(filename):
                 try:
                     dt = datetime.strptime(ts_str, "%Y%m%d%H%M%S")
                     return dt.strftime("%Y-%m-%d %H:%M:%S")
-                except:
+                except ValueError:
                     return ts_str
             
             metadata["start_time"] = format_ts(parts[4])
@@ -43,7 +46,7 @@ def parse_nvr_filename(filename):
             metadata["camera_id"] = parts[0]
             
     except Exception as e:
-        print(f"Ошибка парсинга имени файла {filename}: {e}")
+        logger.error(f"Ошибка парсинга имени файла {filename}: {e}")
         
     return metadata
 
