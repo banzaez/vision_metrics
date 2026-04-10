@@ -82,7 +82,7 @@ def print_start_info(logger, args, config):
     logger.info(f"  Устройство: {args.device or config.settings.system.perf.device}")
     logger.info(f"  Трекер: {args.tracker or config.settings.tracker.type.value}")
     logger.info(f"  Batch size: {args.batch_size}")
-    logger.info(f"  Frame skip: {args.frame_skip}")
+    logger.info(f"  Frame interval: {args.frame_interval}")
     if args.conf:
         logger.info(f"  Confidence: {args.conf}")
     if args.output:
@@ -123,7 +123,7 @@ def main():
     parser.add_argument("--output", type=str, help="Путь к выходному JSON (по умолчанию: авто)")
     parser.add_argument("--conf", type=float, help="Порог confidence (по умолчанию: из конфига)")
     parser.add_argument("--tracker", type=str, help="Выбор трекера (boosttrack, bytetrack, botsort...)")
-    parser.add_argument("--frame-skip", type=int, default=3, help="Пропуск кадров (1 = каждый кадр, default: 3)")
+    parser.add_argument("--frame-interval", type=int, default=3, help="Интервал обработки кадров (1 = каждый кадр, default: 3)")
     parser.add_argument("--save-video", type=str, help="Сохранить обработанное видео с детекциями")
     parser.add_argument("--no-reid", action="store_true", help="Отключить Re-ID модель")
     parser.add_argument("--verbose", action="store_true", help="Расширенный вывод (показывать все детекции)")
@@ -184,8 +184,8 @@ def main():
     if args.conf:
         config.settings.yolo.conf_threshold = args.conf
     
-    if args.frame_skip:
-        config.settings.system.perf.frame_skip = args.frame_skip
+    if args.frame_interval:
+        config.settings.system.perf.frame_interval = args.frame_interval
     
     # Вывод информации при старте
     print_start_info(logger, args, config)

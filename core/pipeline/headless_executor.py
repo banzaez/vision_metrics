@@ -93,7 +93,7 @@ class HeadlessExecutor:
         batch_ids = []
 
         while self.running:
-            is_processing_frame = frame_count % cfg_perf.frame_skip == 0
+            is_processing_frame = frame_count % cfg_perf.frame_interval == 0
             
             if is_processing_frame:
                 ret, frame = cap.read()

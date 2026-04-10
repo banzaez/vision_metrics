@@ -35,9 +35,9 @@ class TrackingService:
             params["with_reid"] = self.cfg_tracker.with_reid
             params["reid_weights"] = self.cfg_tracker.reid_model
 
-            # Динамически вычисляем фреймрейт с учетом пропуска кадров
+            # Динамически вычисляем фреймрейт с учетом интервала обработки
             cfg_perf = config.settings.system.perf
-            params["frame_rate"] = cfg_perf.frame_rate // cfg_perf.frame_skip
+            params["frame_rate"] = cfg_perf.frame_rate // cfg_perf.frame_interval
 
             match tracker_type:
                 case TrackerType.BOTSORT:

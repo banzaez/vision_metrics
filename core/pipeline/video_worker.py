@@ -201,7 +201,7 @@ class VideoWorker(QObject):
             if total_frames > 0 and self.frame_count % FRAME_SKIP_INTERVAL == 0:
                 self.position_changed.emit(self.frame_count)
 
-            is_processing_frame = self.frame_count % cfg_perf.frame_skip == 0
+            is_processing_frame = self.frame_count % cfg_perf.frame_interval == 0
 
             if is_processing_frame:
                 if cfg_perf.batch_size <= 1:
@@ -215,7 +215,7 @@ class VideoWorker(QObject):
                     
                     # Обновление состояния для визуализатора и UI
                     self.last_detections = detections
-                    if self.frame_count % (cfg_perf.frame_skip * 3) == 0:
+                    if self.frame_count % (cfg_perf.frame_interval * 3) == 0:
                         self.stats_updated.emit(detections)
                     
                     if detections:
