@@ -7,8 +7,9 @@ import config
 from .role_classifier import RoleClassifier
 from .zone_manager import ZoneManager
 from .yolo_detector import YOLODetector
-from .tracking_service import TrackingService
-from .track_processor import TrackProcessor
+from .tracker.tracking_service import TrackingService
+from .tracker.track_processor import TrackProcessor
+from .tracker.reid_gallery import ReIDGallery
 from .utils import crop_roi, filter_detections
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,20 @@ class DetectorTracker:
             tracks_storage=self.tracks,
             history_length=self._history_length
         )
+
+        # Re-ID Gallery (ID Stitcher) — надстройка для устранения смены ID
+        gallery_cfg = config.settings.tracker.gallery
+        self.reid_gallery: ReIDGallery | None = (
+            ReIDGallery(gallery_cfg) if gallery_cfg.enabled else None
+        )
+        if self.reid_gallery:
+            logger.info("[ReIDGallery] Включена (порог=%.2f, ttl=%.0fs)",
+                        gallery_cfg.similarity_threshold, gallery_cfg.max_age_seconds)
+        else:
+            logger.info("[ReIDGallery] Отключена.")
+
+        # Множество ID, которые были активны на предыдущем кадре
+        self._prev_active_ids: set[int] = set()
 
         self._frame_count = 0
         self._last_staff_zones = None
@@ -119,16 +134,121 @@ class DetectorTracker:
         if tracked_objects is None or len(tracked_objects) == 0:
             return detections, active_ids
 
-        # 3. Обработка каждого отслеженного объекта через TrackProcessor
+        # 3. Re-ID Gallery: обновляем галерею и применяем alias_map
+        if self.reid_gallery is not None:
+            self._update_reid_gallery(tracked_objects, confs)
+
+        # 4. Обработка каждого отслеженного объекта через TrackProcessor
         for obj in tracked_objects:
             det = self.track_processor.process_track(
                 obj, boxes, masks_np, input_frame, x_off, y_off, current_frame_id, timestamp
             )
             if det:
+                # Применяем alias_map — подменяем ID если есть совпадение
+                if self.reid_gallery is not None:
+                    canonical_id = self.reid_gallery.apply_alias(det["track_id"])
+                    if canonical_id != det["track_id"]:
+                        det["track_id"] = canonical_id
+                        det["id_stitched"] = True
                 detections.append(det)
                 active_ids.add(det["track_id"])
 
         return detections, active_ids
+
+    def _update_reid_gallery(
+        self,
+        tracked_objects: np.ndarray,
+        confs: np.ndarray,
+    ) -> None:
+        """
+        Обновляет Re-ID галерею:
+          1. Извлекает эмбеддинги из BoxMOT-трекера.
+          2. Для активных треков → вызывает gallery.feed_active().
+          3. Для «исчезнувших» треков → вызывает gallery.on_track_lost().
+          4. Для «новых» треков → вызывает gallery.match_new_track() и обновляет alias_map.
+          5. Периодически очищает устаревшие записи (cleanup).
+        """
+        gallery = self.reid_gallery
+
+        # Эмбеддинги из внутреннего состояния трекера {track_id: np.ndarray}
+        tracker_embeddings = gallery.extract_embeddings_from_tracker(
+            self.tracking_service.tracker
+        )
+
+        # Текущие активные ID и их боксы
+        current_active: dict[int, tuple] = {}
+        for obj in tracked_objects:
+            tid = int(obj[4])
+            bbox = (float(obj[0]), float(obj[1]), float(obj[2]), float(obj[3]))
+            current_active[tid] = bbox
+
+            # Кормим галерею эмбеддингом (если есть)
+            emb = tracker_embeddings.get(tid)
+            if emb is not None:
+                # conf: берём из самого tracked_objects (столбец 5)
+                tr_conf = float(obj[5]) if len(obj) > 5 else 0.5
+                gallery.feed_active(tid, emb, tr_conf, bbox)
+
+        current_ids = set(current_active.keys())
+
+        # Треки, которые были активны на прошлом кадре, но исчезли сейчас
+        lost_ids = self._prev_active_ids - current_ids
+        for lost_id in lost_ids:
+            # Последний бокс берём из PersonData если он есть
+            person = self.tracks.get(lost_id)
+            last_bbox = person.last_bbox if person and person.last_bbox else (0, 0, 0, 0)
+            gallery.on_track_lost(lost_id, last_bbox)
+
+        # Новые треки — ищем совпадение в dead_pool
+        new_ids = current_ids - self._prev_active_ids
+        for new_id in new_ids:
+            # Пропускаем если уже есть алиас
+            if new_id in gallery.alias_map:
+                continue
+            emb = tracker_embeddings.get(new_id)
+            if emb is None:
+                continue
+            bbox = current_active[new_id]
+            old_id = gallery.match_new_track(new_id, emb, bbox)
+            if old_id is not None:
+                gallery.alias_map[new_id] = old_id
+                # Переносим PersonData со старого ID если нужно (объединение истории)
+                self._stitch_person_data(new_id, old_id)
+
+        self._prev_active_ids = current_ids
+
+        # Периодическая очистка galery
+        if self._frame_count % 60 == 0:
+            gallery.cleanup()
+
+    def _stitch_person_data(self, new_id: int, old_id: int) -> None:
+        """
+        Объединяет PersonData: копирует историю старого ID на новый,
+        чтобы аналитика видела непрерывный трек.
+        """
+        old_data = self.tracks.get(old_id)
+        new_data = self.tracks.get(new_id)
+
+        if old_data is None or old_data is new_data:
+            return
+
+        if new_data is None:
+            # Новый ID ещё не попал в tracks — просто переиспользуем старый объект
+            self.tracks[new_id] = old_data
+            return
+
+        # Объединяем: переносим историю EMA старого ID на новый
+        new_data.ema = old_data.ema
+        new_data.start_frame = old_data.start_frame
+        new_data.start_timestamp = old_data.start_timestamp
+        
+        # Сливаем историю (используем копию списка, чтобы избежать RuntimeError)
+        # Добавляем старую историю в начало новой, сохраняя порядок
+        old_history = list(old_data.history)
+        for h in reversed(old_history):
+            new_data.history.appendleft(h)
+        
+        logger.debug(f"[ReIDGallery] PersonData склеены: new_id={new_id} ← old_id={old_id} (history_len={len(new_data.history)})")
 
 
 

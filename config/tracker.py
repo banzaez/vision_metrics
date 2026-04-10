@@ -2,7 +2,12 @@ from config.trackers.base import ReIDModel
 from dataclasses import dataclass, field
 from typing import List
 from config.trackers.base import TrackerType, BaseTrackerParams
+from config.reid_custom import ReIDCustomConfig
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Основная конфигурация трекера
+# ─────────────────────────────────────────────────────────────────────────────
 
 @dataclass
 class TrackerConfig(BaseTrackerParams):
@@ -25,3 +30,6 @@ class TrackerConfig(BaseTrackerParams):
 
     # Список классов для отслеживания ([0] для людей)
     classes: List[int] = field(default_factory=lambda: [0])
+
+    # Настройки глобальной Re-ID галереи (ID Stitcher)
+    gallery: ReIDCustomConfig = field(default_factory=ReIDCustomConfig)

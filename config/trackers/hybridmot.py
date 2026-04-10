@@ -5,7 +5,7 @@ from dataclasses import dataclass
 class HybridSortConfig:
     """
     Конфигурация HybridSort трекера.
-    Использует адаптивные веса для разных уровней уверенности детекции (High/Low score).
+    Оптимизирована для ритейла: долгое удержание ID и высокий приоритет Re-ID признаков.
     """
 
     # --- Логика BYTE (работа с низким конфиденсом) ---
@@ -15,38 +15,34 @@ class HybridSortConfig:
 
     # --- Параметры движения и инерции ---
     delta_t: int = 3                     # Шаг времени для расчета вектора скорости
-    inertia: float = 0.1                 # Сила инерции (сопротивление резкой смене вектора)
-    use_custom_kf: bool = True           # Использовать кастомный фильтр Калмана
+    inertia: float = 0.2                 # Усиленная инерция для стабильности при резких поворотах
+    use_custom_kf: bool = True           # Использовать расширенный фильтр Калмана
     
-    # --- Базовые пороги детекции ---
+    # --- Базовые параметры удержания ---
     det_thresh: float = 0.3              # Порог уверенности для детекции
-    max_age: int = 100                   # Сколько кадров "помнить" объект без детекции
-    max_obs: int = 50                    # Макс. количество наблюдений (обычно <= max_age)
-    min_hits: int = 3                    # Кадров для подтверждения нового объекта
-    iou_threshold: float = 0.3           # Порог IoU для ассоциации
-    per_class: bool = False              # Независимый трекинг для разных классов
-    asso_func: str = 'iou'               # Функция ассоциации (iou, giou, diou, ciou)
+    max_age: int = 150                   # Помним объект ~18-20 секунд при низком FPS
+    max_obs: int = 200                   # Буфер наблюдений (должен быть >= max_age для стабильности)
+    min_hits: int = 3                    # Кадров для инициации подтвержденного трека
+    iou_threshold: float = 0.3           # Порог IoU для базовой ассоциации
+    per_class: bool = False              # Глобальный трекинг без деления на классы
+    asso_func: str = 'diou'              # Distance-IoU: лучше учитывает близость центров объектов
 
     # --- Долгосрочная память (Long-term Re-ID) ---
-    with_longterm_reid: bool = True      # Хранить "паспорт" объекта в памяти
-    longterm_bank_length: int = 90       # Сколько последних эмбеддингов хранить в банке
-    longterm_reid_weight: float = 0.6    # Вес долгосрочной памяти при ассоциации (увеличено с 0.3)
+    with_longterm_reid: bool = True      # Хранение истории визуальных признаков
+    longterm_bank_length: int = 120      # Глубина истории признаков для усреднения
+    longterm_reid_weight: float = 0.7    # Увеличенное влияние внешности на принятие решения
     
-    # --- Коррекция по долгосрочной памяти ---
-    with_longterm_reid_correction: bool = True      # Исправлять ID, если Re-ID банк уверен в совпадении
-    longterm_reid_correction_thresh: float = 0.3    # Порог для коррекции надежных объектов
-    longterm_reid_correction_thresh_low: float = 0.35 # Порог для коррекции слабых объектов
+    # --- Интеллектуальная коррекция ---
+    with_longterm_reid_correction: bool = True      # Исправление ID при высокой уверенности Re-ID
+    longterm_reid_correction_thresh: float = 0.3    # Порог для "возрождения" старых ID
+    longterm_reid_correction_thresh_low: float = 0.35 
 
-    # --- EG (Embedding-Geometry) веса ---
-    # Определяют баланс между "внешностью" и "позицией" для разных типов детекций
-    EG_weight_high_score: float = 4.6    # Вес для четких детекций (выше — больше верим Re-ID)
-    EG_weight_low_score: float = 2.0     # Вес для размытых детекций (больше верим геометрии)
+    # --- Баланс Геометрии и Внешности (EG Weights) ---
+    # Позволяет игнорировать странные перемещения, если человек визуально опознан
+    EG_weight_high_score: float = 5.0    # Высокий приоритет Re-ID при хорошей видимости
+    EG_weight_low_score: float = 2.0     # Приоритет геометрии при плохой видимости (блюр, спина)
 
     # --- TCM (Trajectory Continuity Module) ---
-    # Модуль непрерывности траектории (чтобы ID не "прыгали" на пустые места)
-    TCM_first_step: bool = True          # Использовать TCM на первом этапе сопоставления
-    TCM_byte_step: bool = True           # Использовать TCM для слабых детекций
-    TCM_byte_step_weight: float = 1.0    # Влияние модуля на этапе BYTE
 
     # --- Пороги и настройки ---
     high_score_matching_thresh: float = 0.45  # Порог IoU для надежных объектов

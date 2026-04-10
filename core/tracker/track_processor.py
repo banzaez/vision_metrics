@@ -1,6 +1,6 @@
 import logging
 from collections import deque
-from .person_data import PersonData
+from core.person_data import PersonData
 
 logger = logging.getLogger(__name__)
 
