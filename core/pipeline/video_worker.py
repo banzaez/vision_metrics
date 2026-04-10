@@ -149,9 +149,11 @@ class VideoWorker(QObject):
         self.data_logger.metadata = self.video_metadata
         self.data_logger.open()
 
-        # Передаем автоматически определенный camera_id в детектор/оркестратор
+        # Настраиваем оркестратор (унифицированная логика)
         if self.detector:
             self.detector.camera_id = camera_id
+            self.detector.fps = self.video_metadata["fps"]
+            self.detector.data_logger = self.data_logger
             if hasattr(self.detector, 'track_processor'):
                 self.detector.track_processor.camera_id = camera_id
 
@@ -203,14 +205,22 @@ class VideoWorker(QObject):
 
             if is_processing_frame:
                 if cfg_perf.batch_size <= 1:
-                    # Стандартный режим
+                    # Стандартный режим (логирование и lifetime уже внутри!)
                     detections, active_ids = self.detector.process_frame(
                         frame,
                         frame_id=self.frame_count,
                         roi=cfg_analytics.roi,
                         staff_zones=cfg_analytics.staff_zones,
                     )
-                    self._apply_detections(detections, active_ids)
+                    
+                    # Обновление состояния для визуализатора и UI
+                    self.last_detections = detections
+                    if self.frame_count % (cfg_perf.frame_skip * 3) == 0:
+                        self.stats_updated.emit(detections)
+                    
+                    if detections:
+                        self.json_data_ready.emit(self.frame_count, detections)
+                        
                 else:
                     # Пакетный режим
                     self._batch_buffer.append(frame)
@@ -228,8 +238,11 @@ class VideoWorker(QObject):
                             staff_zones=cfg_analytics.staff_zones,
                         )
                         detections, active_ids = batch_results[-1]
-                        self._apply_detections(detections, active_ids)
+                        self.last_detections = detections
                         self._batch_buffer = []
+                        
+                        if detections:
+                            self.json_data_ready.emit(self.frame_count, detections)
                     else:
                         detections = self.last_detections
             else:
@@ -265,34 +278,8 @@ class VideoWorker(QObject):
         self.finished.emit()
 
     def _apply_detections(self, detections, active_ids):
-        """Интеграция результатов детекции в UI."""
-        # 1. Расчет времени жизни
-        fps = getattr(self, "_fps_cache", 25.0)
-        for det in detections:
-            # Конвертируем разницу кадров в секунды
-            lframes = det.get("lifetime_frames", 0)
-            det["lifetime"] = lframes / fps if fps > 0 else 0
-
-        # 2. Обновление состояния для визуализатора и UI
-        # (Прореживаем обновление статистики в таблице для экономии CPU в UI)
-        self.last_detections = detections
-        cfg_perf = config.settings.system.perf
-        if self.frame_count > 0 and self.frame_count % (cfg_perf.frame_skip * 3) == 0:
-            self.stats_updated.emit(detections)
-            
-        # 3. Вывод JSON на каждый обработанный кадр (через DataLogger)
-        if detections:
-            # Эмитим данные в UI
-            self.json_data_ready.emit(self.frame_count, detections)
-            
-            if self.data_logger:
-                # Все данные о видео уже лежат в metadata логгера,
-                # сюда передаем только специфику конкретного кадра
-                self.data_logger.log_frame(
-                    frame_id=self.frame_count,
-                    objects=detections,
-                    flush=not self.max_speed_mode
-                )
+        # Метод больше не используется
+        pass
 
     def stop(self):
         """Остановка цикла обработки."""

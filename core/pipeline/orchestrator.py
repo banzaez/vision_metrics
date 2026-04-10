@@ -61,6 +61,8 @@ class DetectorTracker:
         self._frame_count = 0
         self._last_staff_zones = None
         self._last_frame_shape = None
+        self.fps = 25.0  # Будет обновлено при открытии видео
+        self.data_logger = None  # Внешний логгер для записи данных
         logger.info("DetectorTracker (Orchestrator) инициализирован.")
 
     def _maybe_update_zone_mask(self, staff_zones, frame_shape):
@@ -153,7 +155,21 @@ class DetectorTracker:
                 detections.append(det)
                 active_ids.add(det["track_id"])
 
+        # 5. Постобработка и Логгирование
+        self._post_process(detections, current_frame_id, timestamp)
+
         return detections, active_ids
+
+    def _post_process(self, detections, frame_id, timestamp):
+        """Дополнительные расчеты и сохранение данных."""
+        for det in detections:
+            # Считаем время жизни в секундах на основе FPS
+            lframes = det.get("lifetime_frames", 0)
+            det["lifetime"] = lframes / self.fps if self.fps > 0 else 0
+
+        # Если логгер подключен, отправляем данные на диск
+        if self.data_logger:
+             self.data_logger.log_frame(frame_id, detections)
 
     def _update_reid_gallery(
         self,

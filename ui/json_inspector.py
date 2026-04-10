@@ -88,8 +88,16 @@ class JsonInspectorWidget(QGroupBox):
         item_text = f"Frame {frame_id}"
         self.frame_list.addItem(item_text)
 
-        # Ограничение удалено по просьбе пользователя.
-        # Все кадры сохраняются. Но если ОЗУ закончится - стоит вернуть лимит.
+        # ОГРАНИЧЕНИЕ ИСТОРИИ (OOM Защита)
+        # Мы храним только последние 1000 кадров для живого просмотра.
+        # Все данные доступны в итоговом JSON файле на диске.
+        if self.frame_list.count() > 1000:
+            # Удаляем старейший элемент из UI
+            old_item = self.frame_list.takeItem(0)
+            if old_item:
+                old_frame_id = int(old_item.text().replace("Frame ", ""))
+                # Удаляем из кэша данных
+                self.history.pop(old_frame_id, None)
 
         # Авто-фокус на новых кадрах (режим живого слежения)
         if is_tracking:

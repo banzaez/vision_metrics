@@ -73,6 +73,10 @@ class HeadlessExecutor:
         self.data_logger.metadata = meta
         self.data_logger.open()
         
+        # Настраиваем оркестратор (унифицированная логика)
+        self.detector.fps = meta["fps"]
+        self.detector.data_logger = self.data_logger
+        
         if 'on_duration' in self.callbacks:
             self.callbacks['on_duration'](total_frames)
 
@@ -98,20 +102,13 @@ class HeadlessExecutor:
                 self.callbacks['on_progress'](frame_count)
 
             if is_processing_frame:
+                # Вся логика логгирования и расчета lifetime теперь внутри process_frame!
                 detections, active_ids = self.detector.process_frame(
                     frame, 
                     frame_id=frame_count,
                     roi=cfg_analytics.roi,
                     staff_zones=cfg_analytics.staff_zones
                 )
-                
-                # ... остальная логика логгирования ...
-                actual_fps = fps if fps > 0 else 25.0
-                for det in detections:
-                    lframes = det.get("lifetime_frames", 0)
-                    det["lifetime"] = lframes / actual_fps
-
-                self.data_logger.log_frame(frame_count, detections)
                 
                 if 'on_stats' in self.callbacks:
                     self.callbacks['on_stats'](detections)
