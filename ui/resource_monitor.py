@@ -1,6 +1,7 @@
 from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLabel, QProgressBar, QFrame
 from PyQt6.QtCore import pyqtSlot
 import config
+from ui.style_manager import StyleManager
 
 
 class ResourceMonitorWidget(QFrame):
@@ -11,24 +12,12 @@ class ResourceMonitorWidget(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFixedHeight(40)
-        self.setStyleSheet("""
-            ResourceMonitorWidget {
-                background-color: #1a1a1a;
-                border-bottom: 1px solid #333;
-                border-radius: 6px;
-            }
-            QLabel {
-                color: #e0e0e0;
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-                font-size: 12px;
-            }
-            #title { font-weight: bold; color: #888; text-transform: uppercase; font-size: 10px; }
-            #value { font-weight: bold; color: #fff; min-width: 45px; }
-        """)
+        self.setStyleSheet(StyleManager.RESOURCE_MONITOR)
+        self.setObjectName("resource_panel")
 
         self.main_layout = QHBoxLayout(self)
-        self.main_layout.setContentsMargins(15, 0, 15, 0)
-        self.main_layout.setSpacing(25)
+        self.main_layout.setContentsMargins(12, 0, 12, 0)
+        self.main_layout.setSpacing(20)
 
         # 1. FPS
         self.fps_widget = self._create_metric_group("FPS", "fps_val", "--")
@@ -58,7 +47,7 @@ class ResourceMonitorWidget(QFrame):
         container = QWidget()
         layout = QHBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
+        layout.setSpacing(5)
 
         title_lbl = QLabel(title)
         title_lbl.setObjectName("title")
@@ -68,10 +57,7 @@ class ResourceMonitorWidget(QFrame):
             bar = QProgressBar()
             bar.setFixedSize(70, 6)
             bar.setTextVisible(False)
-            bar.setStyleSheet("""
-                QProgressBar { background-color: #333; border-radius: 3px; border: none; }
-                QProgressBar::chunk { background-color: #00ff00; border-radius: 3px; }
-            """)
+            bar.setStyleSheet(StyleManager.PROGRESS_BAR)
             layout.addWidget(bar)
 
         val_lbl = QLabel(initial_val)
@@ -99,12 +85,8 @@ class ResourceMonitorWidget(QFrame):
 
         # Динамическая смена цвета при нагрузке
         if cpu_p > 80:
-            self.cpu_bar.setStyleSheet(
-                "QProgressBar { background-color: #333; } QProgressBar::chunk { background-color: #ff3300; }"
-            )
+            self.cpu_bar.setStyleSheet(StyleManager.PROGRESS_BAR_DANGER)
         else:
-            self.cpu_bar.setStyleSheet(
-                "QProgressBar { background-color: #333; } QProgressBar::chunk { background-color: #00ff00; }"
-            )
+            self.cpu_bar.setStyleSheet(StyleManager.PROGRESS_BAR)
 
         self.device_val.setText(config.settings.system.perf.device.upper())

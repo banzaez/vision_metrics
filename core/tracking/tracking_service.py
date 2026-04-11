@@ -1,13 +1,19 @@
 from boxmot import (
-    SFSORT, BoostTrack, OcSort, HybridSort, 
-    DeepOcSort, StrongSort, BotSort, ByteTrack
+    SFSORT,
+    BoostTrack,
+    OcSort,
+    HybridSort,
+    DeepOcSort,
+    StrongSort,
+    BotSort,
+    ByteTrack,
 )
 import numpy as np
 from dataclasses import asdict
 import logging
 
 import config
-from config.tracker import TrackerType
+from config.sections.tracker import TrackerType
 
 logger = logging.getLogger(__name__)
 

@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QLabel, QSizePolicy, QMessageBox, QTabWidget)
 from PyQt6.QtGui import QImage, QPixmap, QShortcut, QKeySequence
 from PyQt6.QtCore import Qt, pyqtSlot, QTimer
+from ui.style_manager import StyleManager
 
 logger = logging.getLogger(__name__)
 
@@ -34,12 +35,19 @@ class MainWindow(QMainWindow):
         # Основной виджет и Layout
         self.main_widget = QWidget()
         self.setCentralWidget(self.main_widget)
+        
+        # Глобальный стиль для основных элементов управления
+        self.setStyleSheet(StyleManager.MAIN_WINDOW)
+
         self.main_layout = QHBoxLayout(self.main_widget)
+        self.main_layout.setContentsMargins(8, 8, 8, 8)
+        self.main_layout.setSpacing(8)
 
         # ЛЕВАЯ ЧАСТЬ: Левая панель с общим монитором и вкладками
         self.left_panel = QWidget()
         self.left_layout = QVBoxLayout(self.left_panel)
         self.left_layout.setContentsMargins(0, 0, 0, 0)
+        self.left_layout.setSpacing(8)
         
         # ПАНЕЛЬ МОНИТОРИНГА РЕСУРСОВ (Общая для всех вкладок)
         from ui.resource_monitor import ResourceMonitorWidget
@@ -55,7 +63,7 @@ class MainWindow(QMainWindow):
         # Вкладка 1: Видео монитор
         self.video_container = QWidget()
         self.video_layout = QVBoxLayout(self.video_container)
-        self.video_layout.setContentsMargins(0, 5, 0, 0)
+        self.video_layout.setContentsMargins(0, 0, 0, 0)
         
         # ПАНЕЛЬ СТАТУСА МОДЕЛЕЙ (Engine Status)
         from ui.engine_status import EngineStatusWidget
@@ -80,20 +88,20 @@ class MainWindow(QMainWindow):
         # Вкладка 2: Инспектор данных JSON
         from ui.json_inspector import JsonInspectorWidget
         self.json_inspector = JsonInspectorWidget()
-        # Убираем внутренние рамки группы для полноэкранной вкладки
-        self.json_inspector.setStyleSheet("QGroupBox { border: none; }")
         self.tabs.addTab(self.json_inspector, "JSON Data")
         
-        self.main_layout.addWidget(self.left_panel, 7)
+        self.main_layout.addWidget(self.left_panel, 8) # Увеличиваем приоритет левой части
 
         # ПРАВАЯ ЧАСТЬ: Настройки и Статистика
         self.side_panel = QWidget()
         self.side_layout = QVBoxLayout(self.side_panel)
+        self.side_layout.setContentsMargins(0, 0, 0, 0)
+        self.side_layout.setSpacing(12)
         
         self.side_layout.addWidget(self.regions_panel)
         self.side_layout.addWidget(self.stats_panel)
 
-        self.main_layout.addWidget(self.side_panel, 3)
+        self.main_layout.addWidget(self.side_panel, 2) # Уменьшаем ширину правой части
 
         # Восстановление настроек окна
         self.load_window_settings()

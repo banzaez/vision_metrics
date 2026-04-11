@@ -10,7 +10,6 @@ from core.tracking.tracking_service import TrackingService
 from core.tracking.track_processor import TrackProcessor
 from core.tracking.track_registry import TrackRegistry
 from core.utils import crop_roi, filter_detections
-from core.results.frame_result import FrameResult, PipelineResult
 
 logger = logging.getLogger(__name__)
 

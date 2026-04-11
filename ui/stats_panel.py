@@ -1,14 +1,18 @@
 from PyQt6.QtWidgets import (
-    QGroupBox,
+    QFrame,
+    QWidget,
     QVBoxLayout,
+    QLabel,
     QTableWidget,
     QTableWidgetItem,
     QHeaderView,
 )
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor
+from ui.style_manager import StyleManager
 
 
-class StatsPanel(QGroupBox):
+class StatsPanel(QFrame):
     """
     Панель статистики.
     Отображает таблицу с живым мониторингом задетектированных объектов,
@@ -16,8 +20,25 @@ class StatsPanel(QGroupBox):
     """
 
     def __init__(self, parent=None):
-        super().__init__("Detected Objects (Live)", parent)
-        self._layout = QVBoxLayout(self)
+        super().__init__(parent)
+        
+        # Стиль всей панели
+        self.setStyleSheet(StyleManager.PANEL_CONTAINER)
+
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setSpacing(0)
+
+        # Кастомный заголовок внутри панели
+        self.header = QLabel(" DETECTED OBJECTS")
+        self.header.setStyleSheet(StyleManager.PANEL_HEADER)
+        self.main_layout.addWidget(self.header, 0)
+
+        # Контейнер для содержимого
+        self.content_widget = QWidget()
+        self._layout = QVBoxLayout(self.content_widget)
+        self._layout.setContentsMargins(8, 10, 8, 10)
+        self.main_layout.addWidget(self.content_widget, 1)
 
         # Настройка таблицы
         self.table = QTableWidget(0, 3)
@@ -26,6 +47,12 @@ class StatsPanel(QGroupBox):
             QHeaderView.ResizeMode.Stretch
         )
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.table.setShowGrid(False)
+        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.table.verticalHeader().hide()
+        
+        self.table.setStyleSheet(StyleManager.TABLE_WIDGET)
 
         self._layout.addWidget(self.table)
 
@@ -83,12 +110,12 @@ class StatsPanel(QGroupBox):
             time_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 
             if dtype == "STAFF":
-                color = Qt.GlobalColor.yellow
+                color = QColor(StyleManager.WARNING_TEXT)
             elif dtype == "CLIENT":
-                color = Qt.GlobalColor.blue
+                color = QColor(StyleManager.ACCENT)
             else:
-                color = Qt.GlobalColor.gray
+                color = QColor(StyleManager.TEXT_SECONDARY)
 
             type_item.setForeground(color)
-            id_item.setForeground(Qt.GlobalColor.white)
-            time_item.setForeground(Qt.GlobalColor.white)
+            id_item.setForeground(QColor(StyleManager.TEXT_PRIMARY))
+            time_item.setForeground(QColor(StyleManager.TEXT_PRIMARY))

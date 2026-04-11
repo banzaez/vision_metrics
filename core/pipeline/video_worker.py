@@ -1,18 +1,11 @@
-import cv2
 import os
-import threading
 import logging
-import time
 
 # Скрываем шум декодера OpenCV (сообщения HEVC POC)
 os.environ["OPENCV_VIDEOIO_LOG_LEVEL"] = "0"
 
 from PyQt6.QtCore import QObject, pyqtSignal
 import config
-from core.pipeline.factory import PipelineFactory
-from utils.visualizer import Visualizer
-from utils.filename_parser import parse_nvr_filename
-from core.analytics.monitor import ResourceMonitor
 
 logger = logging.getLogger(__name__)
 
@@ -39,236 +32,79 @@ class VideoWorker(QObject):
     def __init__(self, source_index=0):
         super().__init__()
         self.source_index = source_index
-        self.running = True
-        self.paused = False
-        self._pause_event = threading.Event()
-        self._pause_event.set()
-        self._seek_position = -1
-        self._batch_buffer = []
-
-        self.max_speed_mode = False # Режим максимальной скорости обработки без UI-отрисовки
-
-        self.detector = None
-        self.visualizer = None
-        self.monitor = ResourceMonitor()
-
-        self.frame_count = 0
-        self.last_detections = []
-        self.data_logger = None  # Инициализируется в run()
+        self.executor = None
         
-        # Инфо о видео для экспорта
-        self.video_metadata = {
-            "camera_id": "unknown",
-            "filename": "",
-            "fps": 0.0,
-            "width": 0,
-            "height": 0,
-            "total_frames": 0
-        }
+        self.max_speed_mode = False # Режим максимальной скорости обработки без UI-отрисовки
         logger.info(f"VideoWorker инициализирован для источника #{source_index}")
 
     def set_max_speed(self, enabled):
-        """Включает или выключает режим максимальной мощности обработки без визуализации."""
         self.max_speed_mode = enabled
+        if self.executor:
+            self.executor.realtime = not enabled
+            # Если мы в режиме макс скорости, убираем callback на кадры для экономии ресурсов
+            if enabled:
+                self.executor.callbacks.pop('on_frame', None)
+            else:
+                self.executor.callbacks['on_frame'] = self.frame_ready.emit
         logger.info(f"Режим Max Speed установлен в: {enabled}")
 
     def run(self):
-        """
-        Основной цикл обработки видео.
-        Читает кадры, проводит инференс, собирает статистику и отправляет в UI.
-        """
+        """Запускает универсальный экзекутор."""
+        from core.pipeline.headless_executor import HeadlessExecutor
+        
         cfg_sys = config.settings.system
         source = cfg_sys.video_sources[self.source_index]
-        is_stream = not (isinstance(source, str) and os.path.isfile(source))
 
-        # 0. Валидация источника (если это путь к файлу)
-        if isinstance(source, str) and not any(
-            source.startswith(p) for p in ["rtsp://", "http://", "https://"]
-        ):
-            if not os.path.exists(source):
-                logger.error(f"Видеофайл не найден по пути: {os.path.abspath(source)}")
-                self.finished.emit()
-                return
-
-        cap = cv2.VideoCapture(source)
-
-        if not cap.isOpened():
-            logger.error(f"Ошибка открытия видеоисточника (OpenCV): {source}")
-            cap.release()
-            self.finished.emit()
-            return
-
-        # 1. Получаем информацию о видео для корректной настройки подсистем
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        # Настройка коллбэков (мапим на сигналы PyQt)
+        callbacks = {
+            'on_stats': self.stats_updated.emit,
+            'on_progress': self.position_changed.emit,
+            'on_performance': self.performance_updated.emit,
+            'on_duration': self.duration_ready.emit
+        }
         
-        # Обновляем глобальный конфиг реальным FPS. Это важно, так как TrackingService
-        # считывает это значение при инициализации для расчета параметров трекера.
-        real_fps = float(fps) if fps > 0 else 25.0
-        config.settings.set('system', 'frame_rate', int(real_fps))
+        if not self.max_speed_mode:
+            callbacks['on_frame'] = self.frame_ready.emit
 
-        # 2. Теперь инициализируем тяжелые компоненты, когда знаем реальный FPS
+        # Дополнительный коллбэк для JSON инспектора
+        def on_stats_ext(detections):
+            self.stats_updated.emit(detections)
+            if detections and self.executor:
+                self.json_data_ready.emit(self.executor.frame_count, detections)
+        
+        callbacks['on_stats'] = on_stats_ext
+
+
+        self.executor = HeadlessExecutor(
+            source_path=source,
+            batch_size=config.settings.system.perf.batch_size,
+            callbacks=callbacks,
+            realtime=not self.max_speed_mode
+        )
+
         try:
-            # Используем фабрику для создания detector и data_logger
-            self.detector, nvr_meta = PipelineFactory.create_detector_tracker(source)
-            self.data_logger, video_meta = PipelineFactory.create_data_logger(source)
-            
-            self.video_metadata = video_meta
-            self.video_metadata.update(nvr_meta)
-            
-            self.visualizer = Visualizer()
+            success = self.executor.run()
+            if not success:
+                self.error_occurred.emit("Не удалось запустить обработку видео.")
         except Exception as e:
-            msg = f"Ошибка инициализации систем анализа: {e}"
-            logger.critical(msg)
-            self.error_occurred.emit(msg)
-            cap.release()
+            logger.exception(f"Критическая ошибка в VideoWorker: {e}")
+            self.error_occurred.emit(str(e))
+        finally:
             self.finished.emit()
-            return
-
-        # Настраиваем оркестратор (унифицированная логика)
-        if self.detector:
-            self.detector.data_logger = self.data_logger
-            PipelineFactory.configure_detector(self.detector, self.video_metadata["fps"])
-
-        if total_frames > 0:
-            self.duration_ready.emit(total_frames)
-            self._fps_cache = fps if fps > 0 else 25.0
-            logger.info(f"Видеофайл: {self.video_metadata['camera_id']} | {total_frames} кадров, {fps} FPS")
-        else:
-            self._fps_cache = 25.0  # Дефолт для стримов
-
-        logger.info(f"Видеопоток успешно открыт: {source}")
-
-        cfg_perf = config.settings.system.perf
-        cfg_analytics = config.settings.analytics
-        cfg_ui = config.settings.system.ui
-
-        while self.running:
-            iteration_start = time.perf_counter()
-
-            # Обработка перемотки
-            if self._seek_position >= 0:
-                cap.set(cv2.CAP_PROP_POS_FRAMES, self._seek_position)
-                self.frame_count = self._seek_position
-                self._seek_position = -1
-                self._batch_buffer = []
-
-            # Обработка состояния паузы
-            if self.paused:
-                if is_stream:
-                    cap.grab()
-                self._pause_event.wait(timeout=0.1)
-                continue
-
-            ret, frame = cap.read()
-            if not ret:
-                if not is_stream and self.running:
-                    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                    self.frame_count = 0
-                    continue
-                break
-
-            self.frame_count += 1
-
-            # Обновляем прогресс-бар раз в FRAME_SKIP_INTERVAL кадров
-            if total_frames > 0 and self.frame_count % FRAME_SKIP_INTERVAL == 0:
-                self.position_changed.emit(self.frame_count)
-
-            is_processing_frame = self.frame_count % cfg_perf.frame_interval == 0
-
-            if is_processing_frame:
-                if cfg_perf.batch_size <= 1:
-                    # Стандартный режим (логирование и lifetime уже внутри!)
-                    detections, active_ids = self.detector.process_frame(
-                        frame,
-                        frame_id=self.frame_count,
-                        roi=cfg_analytics.roi,
-                        staff_zones=cfg_analytics.staff_zones,
-                    )
-                    
-                    # Обновление состояния для визуализатора и UI
-                    self.last_detections = detections
-                    if self.frame_count % (cfg_perf.frame_interval * 3) == 0:
-                        self.stats_updated.emit(detections)
-                    
-                    if detections:
-                        self.json_data_ready.emit(self.frame_count, detections)
-
-                else:
-                    # Пакетный режим
-                    self._batch_buffer.append(frame)
-                    if len(self._batch_buffer) >= cfg_perf.batch_size:
-                        batch_frame_ids = list(
-                            range(
-                                self.frame_count - len(self._batch_buffer) + 1,
-                                self.frame_count + 1,
-                            )
-                        )
-                        batch_results = self.detector.process_batch(
-                            self._batch_buffer,
-                            frame_ids=batch_frame_ids,
-                            roi=cfg_analytics.roi,
-                            staff_zones=cfg_analytics.staff_zones,
-                        )
-                        detections, active_ids = batch_results[-1]
-                        self.last_detections = detections
-                        self._batch_buffer = []
-                        
-                        if detections:
-                            self.json_data_ready.emit(self.frame_count, detections)
-                    else:
-                        detections = self.last_detections
-            else:
-                detections = self.last_detections
-
-            # 4. Визуализация и мониторинг
-            self.monitor.update()
-            cfg_ui = config.settings.system.ui
-            if cfg_ui.show_monitoring and self.frame_count % 10 == 0:
-                self.performance_updated.emit(self.monitor.get_stats())
-
-            if not self.max_speed_mode:
-                vis_frame = self.visualizer.draw(
-                    frame,
-                    detections,
-                    roi=cfg_analytics.roi,
-                    staff_auto_zones=cfg_analytics.staff_zones,
-                )
-
-                # 5. Передача результатов
-                self.frame_ready.emit(vis_frame)
-
-                # Для файлов добавляем адаптивную задержку, учитывая время обработки
-                if not is_stream and fps > 0:
-                    elapsed = time.perf_counter() - iteration_start
-                    delay = max(0, (1 / fps) - elapsed)
-                    if delay > 0:
-                        time.sleep(delay)
-
-        cap.release()
-        if self.data_logger:
-            self.data_logger.close()
-        self.finished.emit()
 
     def stop(self):
-        """Остановка цикла обработки."""
-        self.running = False
+        if self.executor:
+            self.executor.stop()
 
     def set_paused(self, p):
-        """Постановка видеопотока на паузу."""
-        self.paused = p
-        if p:
-            self._pause_event.clear()
-        else:
-            self.unblock_pause()
-        logger.debug(f"Состояние паузы изменено на: {p}")
+        if self.executor:
+            self.executor.set_paused(p)
 
     def unblock_pause(self):
-        """Разблокировка потока ожидания (используется при снятии паузы или остановке)."""
-        self._pause_event.set()
+        if self.executor:
+            self.executor._pause_event.set()
 
     def set_position(self, pos):
-        """Установка позиции воспроизведения (для файлов)."""
-        self._seek_position = pos
+        if self.executor:
+            self.executor.set_position(pos)
+

@@ -24,6 +24,7 @@ class PersonData:
     # Состояние
     zone_frames: int = 0
     last_type: str = "CLIENT"
+    _dirty: bool = True
 
     def to_dict(self, frame_id, timestamp):
         """Преобразование текущего состояния в формат для сохранения/логов."""

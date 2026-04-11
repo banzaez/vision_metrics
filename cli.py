@@ -207,41 +207,44 @@ def main():
             total_frames = total
             pbar[0] = tqdm(total=total, desc="Processing", unit="fr", colour="green")
             
-        def on_progress(frame_id, fps=0):
+        def on_progress(frame_id):
+            nonlocal processed_frames
+            processed_frames = frame_id
             if pbar[0]:
                 pbar[0].n = frame_id
                 progress = (frame_id / total_frames * 100) if total_frames > 0 else 0
-                pbar[0].set_postfix_str(f"{fps:.1f} FPS | {progress:.1f}%")
+                pbar[0].set_postfix_str(f"{progress:.1f}%")
                 pbar[0].refresh()
                 
-        def on_performance(stats, fps=0):
+        def on_performance(stats):
             if pbar[0]:
-                fps = stats.get('fps', fps)
+                fps = stats.get('fps', 0)
                 ram = stats.get('ram_gb', 0)
                 pbar[0].set_postfix_str(f"{fps:.1f} FPS | RAM: {ram:.1f}GB")
         
+        def on_stats(detections):
+            nonlocal staff_count, client_count
+            # Считаем уникальные ID для итоговой статистики
+            for d in detections:
+                if d.get('role') == 'staff':
+                    staff_count = max(staff_count, d.get('track_id', 0))
+                else:
+                    client_count = max(client_count, d.get('track_id', 0))
+
         callbacks = {
             'on_duration': on_duration,
             'on_progress': on_progress,
-            'on_performance': on_performance
+            'on_performance': on_performance,
+            'on_stats': on_stats
         }
     except ImportError:
         logger.warning("Библиотека tqdm не найдена. Используется упрощенный вывод.")
         def on_progress_simple(frame_id):
+            nonlocal processed_frames
+            processed_frames = frame_id
             if frame_id % 100 == 0:
                 print(f" >>> Кадр: {frame_id}", flush=True)
         callbacks = {'on_progress': on_progress_simple}
-    
-    # Настройка callback для получения статистики
-    original_on_progress = callbacks.get('on_progress')
-    def wrap_on_progress(frame_id):
-        nonlocal total_frames
-        if original_on_progress:
-            original_on_progress(frame_id)
-        return frame_id
-    
-    if 'on_progress' in callbacks:
-        callbacks['on_progress'] = wrap_on_progress
     
     from core.pipeline.headless_executor import HeadlessExecutor
     executor = HeadlessExecutor(
@@ -249,8 +252,12 @@ def main():
         weights=args.weights,
         device=args.device,
         batch_size=args.batch_size,
-        callbacks=callbacks
+        callbacks=callbacks,
+        realtime=False,
+        auto_loop=False
     )
+
+
     
     try:
         success = executor.run()

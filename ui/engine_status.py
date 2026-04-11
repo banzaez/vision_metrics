@@ -1,8 +1,8 @@
 from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLabel
-from config.trackers.base import ReIDModel, TrackerType
-from config.tracker import TrackerConfig
+from config.sections.tracker import ReIDModel, TrackerType, TrackerConfig
 import config
 import os
+from ui.style_manager import StyleManager
 
 
 def _get_reid_display_name(cfg_tracker: TrackerConfig) -> str:
@@ -38,21 +38,7 @@ class EngineStatusWidget(QWidget):
         self.init_ui()
 
     def init_ui(self):
-        self.setStyleSheet("""
-            QWidget#engineInfo {
-                background-color: rgba(45, 45, 45, 180);
-                border-radius: 4px;
-                margin-bottom: 5px;
-            }
-            QLabel {
-                color: #aaaaaa;
-                font-size: 11px;
-                font-weight: bold;
-            }
-            QLabel#val {
-                color: #4CAF50;
-            }
-        """)
+        self.setStyleSheet(StyleManager.ENGINE_STATUS)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(10, 2, 10, 2)

@@ -74,6 +74,7 @@ class TrackAnalyzer:
         )
         person_data.ema = new_ema
         person_data.last_type = p_type
+        person_data._dirty = True
 
         base_dict = person_data.to_dict(frame_id, person_data.start_timestamp)
         base_dict.update({

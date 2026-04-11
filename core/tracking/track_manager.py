@@ -32,7 +32,12 @@ class TrackManager:
         person_data.prev_bbox = person_data.last_bbox
         person_data.last_bbox = bbox
         person_data.last_frame_id = frame_id
+        person_data._dirty = True
 
     def finalize(self, track_id):
-        """Переместить трек в конец LRU кэша."""
-        self.tracks.move_to_end(track_id)
+        """Переместить трек в конец LRU кэша только если данные изменились."""
+        if track_id in self.tracks:
+            pd = self.tracks[track_id]
+            if pd._dirty:
+                self.tracks.move_to_end(track_id)
+                pd._dirty = False
