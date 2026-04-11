@@ -99,15 +99,17 @@ class RegionsPanel(QGroupBox):
         
         text = current_item.text()
         if text.startswith("ROI:"):
-            config.settings.analytics.roi = None
+            config.settings.set('analytics', 'roi', None)
             if os.path.exists(config.settings.paths.roi_file): 
                 os.remove(config.settings.paths.roi_file)
         elif text.startswith("STAFF:"):
             idx = int(text.split()[-1]) - 1
             if 0 <= idx < len(config.settings.analytics.staff_zones):
-                config.settings.analytics.staff_zones.pop(idx)
+                zones = list(config.settings.analytics.staff_zones)
+                zones.pop(idx)
+                config.settings.set('analytics', 'staff_zones', zones)
                 with open(config.settings.paths.staff_zones_file, 'w', encoding='utf-8') as f:
-                    json.dump(config.settings.analytics.staff_zones, f)
+                    json.dump(zones, f)
                 self.update_zones_list()
 
     def select_roi(self):
@@ -143,13 +145,15 @@ class RegionsPanel(QGroupBox):
         if r[2] > 0 and r[3] > 0:
             coords = [int(r[0]), int(r[1]), int(r[0]+r[2]), int(r[1]+r[3])]
             if is_roi:
-                config.settings.analytics.roi = coords
+                config.settings.set('analytics', 'roi', coords)
                 with open(config.settings.paths.roi_file, 'w', encoding='utf-8') as f:
                     json.dump(coords, f)
             else:
-                config.settings.analytics.staff_zones.append(coords)
+                zones = list(config.settings.analytics.staff_zones)
+                zones.append(coords)
+                config.settings.set('analytics', 'staff_zones', zones)
                 with open(config.settings.paths.staff_zones_file, 'w', encoding='utf-8') as f:
-                    json.dump(config.settings.analytics.staff_zones, f)
+                    json.dump(zones, f)
             self.update_zones_list()
         self.video_worker.set_paused(False)
 
@@ -162,8 +166,8 @@ class RegionsPanel(QGroupBox):
         reply = QMessageBox.question(self, 'Удаление зон', "Сбросить все настройки зон?", 
                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if reply == QMessageBox.StandardButton.Yes:
-            config.settings.analytics.roi = None
-            config.settings.analytics.staff_zones = []
+            config.settings.set('analytics', 'roi', None)
+            config.settings.set('analytics', 'staff_zones', [])
             for f in [config.settings.paths.roi_file, config.settings.paths.staff_zones_file]:
                 if os.path.exists(f): 
                     os.remove(f)

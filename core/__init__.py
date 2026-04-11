@@ -1,5 +1,13 @@
 from .pipeline.orchestrator import DetectorTracker
-from core.detection.yolo_detector import YOLODetector
-from core.tracking.tracking_service import TrackingService
+from .detection.yolo_detector import YOLODetector
+from .tracking.tracking_service import TrackingService
 
-__all__ = ['DetectorTracker', 'YOLODetector', 'TrackingService']
+# Aliases for cleaner API
+AnalyticsPipeline = DetectorTracker
+
+__all__ = [
+    'DetectorTracker',
+    'YOLODetector',
+    'TrackingService',
+    'AnalyticsPipeline',
+]

@@ -174,18 +174,18 @@ def main():
     # Применение переданных параметров
     if args.tracker:
         try:
-            config.settings.tracker.type = TrackerType(args.tracker)
+            config.settings.set('tracker', 'type', TrackerType(args.tracker))
         except ValueError:
             parser.error(f"Некорректный трекер: {args.tracker}")
     
     if args.no_reid:
-        config.settings.tracker.with_reid = False
+        config.settings.set('tracker', 'with_reid', False)
     
     if args.conf:
-        config.settings.yolo.conf_threshold = args.conf
+        config.settings.set('yolo', 'conf_threshold', args.conf)
     
     if args.frame_interval:
-        config.settings.system.perf.frame_interval = args.frame_interval
+        config.settings.set('system', 'frame_interval', args.frame_interval)
     
     # Вывод информации при старте
     print_start_info(logger, args, config)

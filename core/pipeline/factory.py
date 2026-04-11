@@ -2,7 +2,7 @@ import os
 import logging
 import config
 from core.pipeline.orchestrator import DetectorTracker
-from core.analytics.data_logger import JSONDataLogger
+from core.io.data_logger import JSONDataLogger
 from utils.filename_parser import parse_nvr_filename
 
 logger = logging.getLogger(__name__)

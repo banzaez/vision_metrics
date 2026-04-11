@@ -10,6 +10,7 @@ from core.tracking.tracking_service import TrackingService
 from core.tracking.track_processor import TrackProcessor
 from core.tracking.track_registry import TrackRegistry
 from core.utils import crop_roi, filter_detections
+from core.results.frame_result import FrameResult, PipelineResult
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +53,16 @@ class DetectorTracker:
         input_frame, x_off, y_off = crop_roi(frame, roi)
         current_ts = timestamp if timestamp is not None else time.time()
 
-        results = self.detector.detect(input_frame)
-        detections, active_ids = self._analyze_results(results[0], input_frame, x_off, y_off, frame_id, current_ts)
+        frame_result = self.detector.detect(input_frame, frame_id)
+        
+        if not frame_result.success:
+            logger.warning(f"Detection failed on frame {frame_id}: {frame_result.error}")
+            return [], set()
+        
+        if not frame_result.detections or len(frame_result.detections) == 0:
+            return [], set()
+        
+        detections, active_ids = self._analyze_results(frame_result.detections[0], input_frame, x_off, y_off, frame_id, current_ts)
         
         self._finalize_step()
         return detections, active_ids
@@ -68,10 +77,21 @@ class DetectorTracker:
         offsets = [crop_roi(f, roi)[1:] for f in frames]
         ts_list = timestamps if timestamps is not None else [time.time()] * len(frames)
 
-        results = self.detector.detect(processed_inputs)
+        batch_input = processed_inputs[0] if len(processed_inputs) == 1 else processed_inputs
+        batch_frame_id = frame_ids[0] if len(frame_ids) == 1 else 0
+        results = self.detector.detect(batch_input, batch_frame_id)
+        
+        if not results.success:
+            logger.warning(f"Batch detection failed: {results.error}")
+            return []
+        
+        detection_results = results.detections
+        if not detection_results:
+            return []
+        
         batch_output = []
 
-        for res, inp_frame, (x_off, y_off), f_id, ts in zip(results, processed_inputs, offsets, frame_ids, ts_list):
+        for res, inp_frame, (x_off, y_off), f_id, ts in zip(detection_results, processed_inputs, offsets, frame_ids, ts_list):
             detections, active_ids = self._analyze_results(res, inp_frame, x_off, y_off, f_id, ts)
             batch_output.append((detections, active_ids))
             self._finalize_step()
@@ -117,11 +137,29 @@ class DetectorTracker:
 
     def _prepare_yolo_data(self, result, input_frame):
         """Извлечение и базовая фильтрация данных из YOLO."""
-        boxes = result.boxes.xyxy.cpu().numpy()
-        confs = result.boxes.conf.cpu().numpy()
-        cls = result.boxes.cls.cpu().numpy()
-        masks = result.masks.data.cpu().numpy() if result.masks is not None else None
-
+        try:
+            boxes = result.boxes.xyxy.cpu().numpy()
+            confs = result.boxes.conf.cpu().numpy()
+            cls = result.boxes.cls.cpu().numpy()
+        except Exception as e:
+            logger.warning(f"Failed to extract boxes from YOLO result: {e}")
+            return np.zeros((0, 4), dtype=np.float64), np.zeros((0,), dtype=np.float64), np.zeros((0,), dtype=np.float64), None
+        
+        try:
+            masks = result.masks.data.cpu().numpy() if result.masks is not None else None
+            if masks is not None:
+                if not isinstance(masks, np.ndarray):
+                    masks = None
+                elif masks.ndim != 3:
+                    logger.warning(f"Invalid masks shape: {masks.shape}")
+                    masks = None
+                elif masks.shape[0] != len(boxes):
+                    logger.warning(f"Masks count ({masks.shape[0]}) != boxes count ({len(boxes)})")
+                    masks = None
+        except Exception as e:
+            logger.warning(f"Failed to process masks: {e}")
+            masks = None
+        
         h, w = input_frame.shape[:2]
         boxes[:, [0, 2]] = np.clip(boxes[:, [0, 2]], 0, w)
         boxes[:, [1, 3]] = np.clip(boxes[:, [1, 3]], 0, h)

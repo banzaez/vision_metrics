@@ -107,7 +107,7 @@ class VideoWorker(QObject):
         # Обновляем глобальный конфиг реальным FPS. Это важно, так как TrackingService
         # считывает это значение при инициализации для расчета параметров трекера.
         real_fps = float(fps) if fps > 0 else 25.0
-        config.settings.system.perf.frame_rate = int(real_fps)
+        config.settings.set('system', 'frame_rate', int(real_fps))
 
         # 2. Теперь инициализируем тяжелые компоненты, когда знаем реальный FPS
         try:

@@ -20,6 +20,9 @@ class ResourceMonitor:
         
         self._last_sys_update = 0
         self._process = psutil.Process(os.getpid())
+        
+        self._process.cpu_percent()
+        time.sleep(0.1)
 
     def update(self):
         """Обновляет показатели FPS и системных ресурсов."""
