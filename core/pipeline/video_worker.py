@@ -232,13 +232,29 @@ class VideoWorker(QObject):
                         
                         # Проверка на новые события склейки Re-ID
                         for det in detections:
+                            # 1. Успешная склейка
                             if det.get("is_stitched"):
                                 stitch_key = (det["original_id"], det["track_id"])
                                 if stitch_key not in self._processed_stitches:
                                     self._processed_stitches.add(stitch_key)
                                     self.reid_stitched.emit({
                                         "old_id": det["track_id"],
-                                        "new_id": det["original_id"]
+                                        "new_id": det["original_id"],
+                                        "score": det.get("stitch_score", 0.0),
+                                        "status": "SUCCESS",
+                                        "type": det.get("type", "person")
+                                    })
+                            
+                            # 2. "Близкий промах" (для отладки в логе)
+                            elif det.get("is_near_miss"):
+                                # Чтобы не спамить лог, проверяем near-miss не каждый кадр
+                                if self.frame_count % 30 == 0:
+                                    self.reid_stitched.emit({
+                                        "old_id": det.get("potential_old_id"),
+                                        "new_id": det.get("original_id"),
+                                        "score": det.get("stitch_score", 0.0),
+                                        "status": "REJECTED",
+                                        "type": det.get("type", "person")
                                     })
                         
                 else:

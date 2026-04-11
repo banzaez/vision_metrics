@@ -75,32 +75,46 @@ class ReIDStitcher:
             if emb is None:
                 continue
             
-            bbox = current_active[new_id]
-            old_id = self.gallery.match_new_track(new_id, emb, bbox)
-            if old_id is not None:
-                self.gallery.alias_map[new_id] = old_id
-                self._stitch_person_data(new_id, old_id)
+            # Поиск соответствия в галерее
+            # Теперь получаем ID, балл и СТАТУС (SUCCESS/REJECTED)
+            new_bbox = current_active[new_id]
+            old_id, score, status = self.gallery.match_new_track(new_id, emb, new_bbox)
+            
+            # Сохраняем расширенные метаданные для этой детекции
+            self.gallery.stitch_scores[new_id] = {
+                "old_id": old_id,
+                "score": score,
+                "status": status
+            }
+
+            if status == "SUCCESS" and old_id is not None:
+                # Если нашли склейку - объединяем данные и подтягиваем историю
+                # ПОРЯДОК: (старый_ID, новый_ID)
+                self._stitch_person_data(old_id, new_id)
 
         self._prev_active_ids = current_ids
 
-    def _stitch_person_data(self, new_id: int, old_id: int) -> None:
+    def _stitch_person_data(self, old_id: int, new_id: int) -> None:
         """Объединяет историю PersonData старого и нового трека."""
         old_data = self.tracks.get(old_id)
-        new_data = self.tracks.get(new_id)
-
+        
+        # Если старый ID уже вытеснен из памяти (LRU), склейка истории невозможна
         if old_data is None:
-            # Если старый ID уже вытеснен из памяти (LRU), склейка истории невозможна
             logger.debug(f"[ReIDStitcher] Не удалось склеить историю: old_id={old_id} не найден в tracks")
             return
 
-        if new_data is None or old_data is new_data:
+        # Если для нового ID еще нет PersonData (он только появился), 
+        # мы можем просто переименовать старый объект в хранилище.
+        if new_id not in self.tracks:
+            self.tracks[new_id] = old_data
+            self.tracks.pop(old_id, None)
+            logger.debug(f"[ReIDStitcher] ID {old_id} переименован в {new_id} (новые данные еще не созданы)")
             return
 
-        # Используем инкапсулированный метод слияния
-        new_data.merge_from(old_data)
-        
-        # ВАЖНО: Удаляем старый ID из основного хранилища, чтобы не плодить дубли
-        # и не занимать место в LRU-лимите.
-        self.tracks.pop(old_id, None)
-        
-        logger.debug(f"[ReIDStitcher] Склейка данных: {new_id} <- {old_id} (история объединена)")
+        new_data = self.tracks.get(new_id)
+        if new_data and old_data is not new_data:
+            # Используем инкапсулированный метод слияния
+            new_data.merge_from(old_data)
+            # Удаляем старый ID
+            self.tracks.pop(old_id, None)
+            logger.debug(f"[ReIDStitcher] Склейка истории: {old_id} -> {new_id}")

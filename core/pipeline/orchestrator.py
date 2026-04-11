@@ -101,6 +101,8 @@ class DetectorTracker:
 
         # 3. Re-ID и Stitching
         if self.stitcher:
+            if self.reid_gallery:
+                self.reid_gallery.stitch_scores.clear()
             self.stitcher.update(tracked_objects, self.tracking_service.tracker)
 
         # 4. Обработка каждого объекта
@@ -110,14 +112,22 @@ class DetectorTracker:
                 obj, boxes, masks, input_frame, x_off, y_off, current_frame_id, timestamp
             )
             if det:
-                # Применяем алиас ID если трек был склеен
                 if self.reid_gallery:
                     orig_id = det["track_id"]
-                    canonical_id = self.reid_gallery.apply_alias(orig_id)
-                    if canonical_id != orig_id:
-                        det["track_id"] = canonical_id
-                        det["is_stitched"] = True
-                        det["original_id"] = orig_id
+                    stitch_data = self.reid_gallery.stitch_scores.get(orig_id, {})
+                    if stitch_data:
+                        det["stitch_score"] = stitch_data.get("score", 0.0)
+                        det["reid_status"] = stitch_data.get("status", "NONE")
+                        
+                        if stitch_data.get("status") == "SUCCESS":
+                            canonical_id = self.reid_gallery.apply_alias(orig_id)
+                            det["track_id"] = canonical_id
+                            det["is_stitched"] = True
+                            det["original_id"] = orig_id
+                        elif stitch_data.get("status") == "REJECTED":
+                            det["is_near_miss"] = True
+                            det["original_id"] = orig_id
+                            det["potential_old_id"] = stitch_data.get("old_id")
                 
                 detections.append(det)
                 active_ids.add(det["track_id"])

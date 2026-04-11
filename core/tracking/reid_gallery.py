@@ -79,6 +79,7 @@ class ReIDGallery:
         self.cfg = cfg
         self.lock = threading.RLock()
         self.alias_map: dict[int, int] = {}
+        self.stitch_scores: dict[int, float] = {}
 
         # Активные треки: {track_id: np.ndarray} — скользящий усреднённый эмбеддинг
         self._live_embeddings: dict[int, np.ndarray] = {}
@@ -151,57 +152,59 @@ class ReIDGallery:
         new_id: int,
         embedding: np.ndarray,
         bbox: tuple,
-    ) -> int | None:
+    ) -> tuple[int | None, float, str]:
         """
         Поиск совпадения нового трека среди «мёртвых» ID.
+        Возвращает (ID_склейки, балл, статус)
         """
         if embedding is None or embedding.size == 0:
-            return None
+            return None, 0.0, "ERROR"
 
         emb = embedding.flatten().astype(np.float64)
         best_id = None
         best_score = -1.0
-        best_cos_sim = 0.0
+        
+        # Для отладки «близких промахов»
+        best_overall_id = None
+        best_overall_score = -1.0
 
         with self.lock:
             if not self._dead_pool:
-                return None
+                return None, 0.0, "EMPTY"
 
             for old_id, data in self._dead_pool.items():
-                # Уже "занятый" мёртвый ID пропускаем
                 if old_id in self._reversed_map:
                     continue
 
                 cos_sim = _cosine_similarity(emb, data["emb"])
                 
-                # Пространственный штраф
                 if self.cfg.spatial_iou_weight > 0.0:
                     penalty = _spatial_penalty(data["bbox"], bbox)
                     score = cos_sim * (1.0 - self.cfg.spatial_iou_weight * penalty)
                 else:
                     score = cos_sim
 
-                # Порог проверяем ПОСЛЕ учета всех штрафов
-                if score < self.cfg.similarity_threshold:
-                    logger.debug(
-                        f"[ReIDGallery] Отклонено: new_id={new_id} vs old_id={old_id}. "
-                        f"Score {score:.3f} < Threshold {self.cfg.similarity_threshold}"
-                    )
-                    continue
+                # Запоминаем лучший результат в любом случае для отладки
+                if score > best_overall_score:
+                    best_overall_score = score
+                    best_overall_id = old_id
 
-                if score > best_score:
-                    best_score = score
-                    best_id = old_id
-                    best_cos_sim = cos_sim
+                # Порог проверяем для РЕАЛЬНОЙ склейки
+                if score >= self.cfg.similarity_threshold:
+                    if score > best_score:
+                        best_score = score
+                        best_id = old_id
 
             if best_id is not None:
                 self._reversed_map[best_id] = new_id
-                logger.info(
-                    f"[ReIDGallery] Склейка: new_id={new_id} → old_id={best_id} "
-                    f"(score={best_score:.3f}, cos={best_cos_sim:.3f})"
-                )
+                logger.info(f"[ReIDGallery] Склейка: {new_id} → {best_id} (sc:{best_score:.3f})")
+                return best_id, best_score, "SUCCESS"
+            
+            # Если склейка не прошла, но был сильный кандидат (> 0.5)
+            if best_overall_id is not None and best_overall_score > 0.5:
+                return best_overall_id, best_overall_score, "REJECTED"
 
-        return best_id
+        return None, 0.0, "NONE"
 
     def apply_alias(self, track_id: int) -> int:
         """
@@ -255,6 +258,7 @@ class ReIDGallery:
                 
                 for tid in to_delete:
                     self.alias_map.pop(tid, None)
+                    self.stitch_scores.pop(tid, None)
 
             if expired or to_delete:
                 logger.debug(
