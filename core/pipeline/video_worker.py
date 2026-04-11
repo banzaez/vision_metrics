@@ -28,6 +28,7 @@ class VideoWorker(QObject):
     duration_ready = pyqtSignal(int)  # Общее кол-во кадров
     metadata_ready = pyqtSignal(dict) # Метаданные видео (FPS, разрешение и т.д.)
     error_occurred = pyqtSignal(str)  # Критическая ошибка
+    reid_event = pyqtSignal(dict)   # События сшивки (stitch) и статистика галереи
     finished = pyqtSignal()  # Сигнал о завершении работы
 
     def __init__(self, source_index=0):
@@ -68,7 +69,8 @@ class VideoWorker(QObject):
             'on_performance': self.performance_updated.emit,
             'on_duration': self.duration_ready.emit,
             'on_meta': self.metadata_ready.emit,
-            'on_stats': on_stats_combined
+            'on_stats': on_stats_combined,
+            'on_reid': self.reid_event.emit
         }
 
         

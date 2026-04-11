@@ -17,7 +17,8 @@ logger = logging.getLogger(__name__)
 class DetectorTracker:
     """Оркестратор трекинга: объединяет детекцию, трекинг и бизнес-логику."""
 
-    def __init__(self, model_path, camera_id="0", device="mps", half=False):
+    def __init__(self, model_path, camera_id="0", device="mps", half=False, callbacks=None):
+        self.callbacks = callbacks or {}
         cfg_ident = config.settings.analytics.ident
         self.camera_id = camera_id
 
@@ -46,7 +47,9 @@ class DetectorTracker:
         cfg_custom = config.settings.tracker.custom_reid
         self.reid_stitcher = CustomReIDStitcher(
             threshold=cfg_custom.threshold,
-            gallery_size=cfg_custom.gallery_size
+            gallery_size=cfg_custom.gallery_size,
+            ema_alpha=cfg_custom.ema_alpha,
+            stats_callback_interval=cfg_custom.stats_callback_interval,
         )
         # Пробрасываем ReID модель из основного трекера (если она там есть)
         if hasattr(self.tracking_service.tracker, 'model'):
@@ -129,7 +132,11 @@ class DetectorTracker:
 
         # Кастомная сшивка треков (если включена в конфиге)
         if tracked_objects.shape[0] > 0 and config.settings.tracker.custom_reid.enabled:
-            tracked_objects = self.reid_stitcher.process(tracked_objects, input_frame)
+            tracked_objects = self.reid_stitcher.process(
+                tracked_objects, input_frame, 
+                self.tracking_service.tracker,
+                event_callback=self.callbacks.get('on_reid')
+            )
 
         if tracked_objects.shape[0] == 0:
             return [], set()

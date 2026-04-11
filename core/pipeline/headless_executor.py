@@ -86,7 +86,9 @@ class HeadlessExecutor:
         }
         self.meta.update(nvr_meta)
 
-        self.detector, _ = PipelineFactory.create_detector_tracker(self.source_path, camera_id_override=camera_id)
+        self.detector, _ = PipelineFactory.create_detector_tracker(
+            self.source_path, camera_id_override=camera_id, callbacks=self.callbacks
+        )
         self.detector.fps = self.meta["fps"]
 
         self.data_logger, _ = PipelineFactory.create_data_logger(self.source_path)

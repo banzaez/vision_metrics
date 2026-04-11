@@ -10,13 +10,14 @@ logger = logging.getLogger(__name__)
 
 class PipelineFactory:
     @staticmethod
-    def create_detector_tracker(video_source, camera_id_override=None):
+    def create_detector_tracker(video_source, camera_id_override=None, callbacks=None):
         """
         Фабрика для создания DetectorTracker с правильной инициализацией.
 
         Args:
             video_source: Путь к видеофайлу или URL стрима
             camera_id_override: Опциональный override для camera_id
+            callbacks: Словарь коллбэков (напр. {'on_reid': func})
 
         Returns:
             Tuple[DetectorTracker, dict]: detector и метаданные видео
@@ -33,6 +34,7 @@ class PipelineFactory:
             camera_id=camera_id,
             device=cfg_perf.device,
             half=cfg_perf.half,
+            callbacks=callbacks
         )
 
         logger.info(f"DetectorTracker создан для камеры: {camera_id}")

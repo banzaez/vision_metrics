@@ -10,6 +10,7 @@ from config.trackers.hybridsort import HybridSortConfig
 from config.trackers.ocsort import OcSortConfig
 from config.trackers.sfsort import SFSortConfig
 from config.trackers.strongsort import StrongSortConfig
+from .reid import CustomReIDConfig
 
 
 class TrackerType(str, Enum):
@@ -123,17 +124,6 @@ class TrackerRegistry:
         """Возвращает человекочитаемое название трекера."""
         entry = self.configs.get(tracker_type)
         return entry.name if entry else "Unknown"
-
-
-@dataclass
-class CustomReIDConfig:
-    """Конфигурация кастомного алгоритма сшивки треков."""
-    enabled: bool = True
-    """Включение/выключение кастомной сшивки."""
-    threshold: float = 0.7
-    """Порог уверенности для принятия решения о сшивке (0.0 - 1.0)."""
-    gallery_size: int = 100
-    """Максимальное количество треков, хранимых в галерее для сшивки."""
 
 
 @dataclass
