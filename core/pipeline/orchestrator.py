@@ -79,7 +79,6 @@ class DetectorTracker:
 
         for res, inp_frame, (x_off, y_off), f_id, ts in zip(results, processed_inputs, offsets, frame_ids, ts_list):
             detections, active_ids = self._analyze_results(res, inp_frame, x_off, y_off, f_id, ts)
-            self._post_process_metrics(detections, f_id, ts)
             batch_output.append((detections, active_ids))
             self._finalize_step()
 
@@ -87,23 +86,30 @@ class DetectorTracker:
 
     def _analyze_results(self, result, input_frame, x_off, y_off, current_frame_id, timestamp):
         """Связующее звено между YOLO, трекером и бизнес-логикой."""
-        if not self.tracking_service.tracker or not result.boxes or len(result.boxes) == 0:
+        if not self.tracking_service.tracker:
+            if not result.boxes or len(result.boxes) == 0:
+                return [], set()
             return self._handle_fallback(result, x_off, y_off, current_frame_id), set()
 
-        # 1. Фильтрация детекций
-        boxes, confs, cls, masks = self._prepare_yolo_data(result, input_frame)
-        if len(boxes) == 0:
-            return [], set()
+        masks = None
+        if not result.boxes or len(result.boxes) == 0:
+            boxes = np.zeros((0, 4), dtype=np.float64)
+            confs = np.zeros((0,), dtype=np.float64)
+            cls = np.zeros((0,), dtype=np.float64)
+        else:
+            boxes, confs, cls, masks = self._prepare_yolo_data(result, input_frame)
 
-        # 2. Трекинг
         tracked_objects = self.tracking_service.update(boxes, confs, cls, input_frame)
-        if tracked_objects is None or len(tracked_objects) == 0:
-            return [], set()
+        if tracked_objects is None:
+            tracked_objects = np.zeros((0, 8), dtype=np.float64)
 
-        # 3. Re-ID и Stitching (Identity Management)
+        # Re-ID / stitcher должны вызываться и на пустых кадрах (пропажа треков → dead_pool)
         self.identity_manager.update(tracked_objects, self.tracking_service.tracker)
 
-        # 4. Обработка каждого объекта
+        if tracked_objects.shape[0] == 0:
+            return [], set()
+
+        # Обработка каждого объекта
         detections, active_ids = [], set()
         for obj in tracked_objects:
             # Обработка бизнес-логики (зоны, роль, история)

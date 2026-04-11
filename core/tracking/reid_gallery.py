@@ -13,6 +13,7 @@ ReID Gallery — глобальная галерея признаков для �
 import time
 import logging
 import threading
+from typing import Any
 
 import numpy as np
 
@@ -63,6 +64,29 @@ def _spatial_penalty(bbox_old, bbox_new) -> float:
     return penalty
 
 
+def _bbox_valid(bbox) -> bool:
+    """Бокс (x1, y1, x2, y2) с положительной площадью."""
+    try:
+        x1, y1, x2, y2 = float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3])
+    except (TypeError, IndexError, ValueError):
+        return False
+    return x2 > x1 and y2 > y1
+
+
+def _extract_strack_feature(trk) -> np.ndarray | None:
+    """
+    Вектор признака Re-ID из strack BoxMOT (имена полей зависят от трекера/версии).
+    """
+    for name in ("smooth_feat", "curr_feat", "feat", "embedding", "upd_feat", "embeddings"):
+        raw = getattr(trk, name, None)
+        if raw is None:
+            continue
+        arr = np.asarray(raw, dtype=np.float64).reshape(-1)
+        if arr.size > 0 and np.linalg.norm(arr) >= 1e-9:
+            return arr
+    return None
+
+
 class ReIDGallery:
     """
     Глобальная галерея Re-ID признаков для «склейки» ID.
@@ -79,7 +103,7 @@ class ReIDGallery:
         self.cfg = cfg
         self.lock = threading.RLock()
         self.alias_map: dict[int, int] = {}
-        self.stitch_scores: dict[int, float] = {}
+        self.stitch_scores: dict[int, dict[str, Any]] = {}
 
         # Активные треки: {track_id: np.ndarray} — скользящий усреднённый эмбеддинг
         self._live_embeddings: dict[int, np.ndarray] = {}
@@ -89,6 +113,9 @@ class ReIDGallery:
 
         # Обратный словарь: old_id → new_id (чтобы не плодить дубли)
         self._reversed_map: dict[int, int] = {}
+
+        # Диагностика: on_track_lost без накопленного эмбеддинга (см. feed_active / extract)
+        self._skipped_lost_no_embedding: int = 0
 
     # ------------------------------------------------------------------
     # Публичный API
@@ -131,7 +158,12 @@ class ReIDGallery:
         """
         with self.lock:
             if track_id not in self._live_embeddings:
-                logger.debug(f"[ReIDGallery] on_track_lost: нет эмбеддинга для id={track_id}")
+                self._skipped_lost_no_embedding += 1
+                logger.debug(
+                    "[ReIDGallery] on_track_lost: id=%s нет в _live_embeddings "
+                    "(нет признака в BoxMOT или conf < min_conf_for_gallery)",
+                    track_id,
+                )
                 return
 
             # Обрезаем галерею если она переполнена
@@ -177,10 +209,15 @@ class ReIDGallery:
                     continue
 
                 cos_sim = _cosine_similarity(emb, data["emb"])
-                
-                if self.cfg.spatial_iou_weight > 0.0:
+
+                w = self.cfg.spatial_penalty_weight
+                if (
+                    w > 0.0
+                    and _bbox_valid(data["bbox"])
+                    and _bbox_valid(bbox)
+                ):
                     penalty = _spatial_penalty(data["bbox"], bbox)
-                    score = cos_sim * (1.0 - self.cfg.spatial_iou_weight * penalty)
+                    score = cos_sim * (1.0 - w * penalty)
                 else:
                     score = cos_sim
 
@@ -254,7 +291,7 @@ class ReIDGallery:
                 # Множество всех "полезных" ID в системе ReID
                 known_ids = set(self._live_embeddings.keys()) | set(self._dead_pool.keys())
                 
-                for start_id in self.alias_map.keys():
+                for start_id in list(self.alias_map.keys()):
                     # canonical — это конец цепочки (старейший ID)
                     canonical = self.apply_alias(start_id)
                     if canonical not in known_ids:
@@ -306,12 +343,10 @@ class ReIDGallery:
             tid = getattr(trk, "id", getattr(trk, "track_id", None))
             if tid is None or tid in seen_ids:
                 continue
-            
-            # smooth_feat — стандарт для BoTSORT/HybridSort/StrongSort в BoxMOT
-            feat = getattr(trk, "smooth_feat", getattr(trk, "curr_feat", None))
-            
+
+            feat = _extract_strack_feature(trk)
             if feat is not None:
-                result[tid] = np.array(feat, dtype=np.float64)
+                result[tid] = feat
                 seen_ids.add(tid)
 
         if result:

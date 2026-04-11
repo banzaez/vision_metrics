@@ -72,3 +72,26 @@ class IdentityManager:
         with self.gallery.lock:
             # Возвращаем список ID из dead_pool
             return list(self.gallery._dead_pool.keys())
+
+    def get_gallery_stats(self) -> Dict[str, Any]:
+        """Сводка состояния галереи для UI/логов (под lock)."""
+        if not self.enabled or self.gallery is None:
+            return {
+                "enabled": False,
+                "dead_pool_count": 0,
+                "live_embeddings_count": 0,
+                "alias_map_count": 0,
+                "reversed_map_count": 0,
+                "pending_ids": [],
+                "skipped_lost_no_embedding": 0,
+            }
+        with self.gallery.lock:
+            return {
+                "enabled": True,
+                "dead_pool_count": len(self.gallery._dead_pool),
+                "live_embeddings_count": len(self.gallery._live_embeddings),
+                "alias_map_count": len(self.gallery.alias_map),
+                "reversed_map_count": len(self.gallery._reversed_map),
+                "pending_ids": list(self.gallery._dead_pool.keys()),
+                "skipped_lost_no_embedding": self.gallery._skipped_lost_no_embedding,
+            }

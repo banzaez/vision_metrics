@@ -79,15 +79,32 @@ class TrackingService:
             frame: Текущий кадр (для ReID)
 
         Returns:
-            tracked_objects: Результаты от трекера или None
+            tracked_objects: массив результатов трекера; при отсутствии треков — (0, K) ndarray
         """
-        if self.tracker is None or len(boxes) == 0:
+        if self.tracker is None:
             return None
 
-        # Подготовка данных для BoxMOT [N, 6] (x1, y1, x2, y2, conf, cls)
-        dets = np.zeros((len(boxes), 6))
-        dets[:, :4] = boxes
-        dets[:, 4] = confs
-        dets[:, 5] = cls
+        # Пустой dets — штатный сценарий BoxMOT (кадр без детекций, старые треки «дотекают»)
+        n = len(boxes)
+        if n == 0:
+            dets = np.zeros((0, 6), dtype=np.float32)
+        else:
+            dets = np.zeros((n, 6), dtype=np.float32)
+            dets[:, :4] = boxes
+            dets[:, 4] = confs
+            dets[:, 5] = cls
 
-        return self.tracker.update(dets, frame)
+        out = self.tracker.update(dets, frame)
+        return self._normalize_tracker_output(out)
+
+    @staticmethod
+    def _normalize_tracker_output(out):
+        """Приводит вывод BoxMOT к 2D ndarray для stitcher / циклов."""
+        if out is None:
+            return np.zeros((0, 8), dtype=np.float64)
+        arr = np.asarray(out, dtype=np.float64)
+        if arr.size == 0:
+            return np.zeros((0, 8), dtype=np.float64)
+        if arr.ndim == 1:
+            return arr.reshape(1, -1)
+        return arr

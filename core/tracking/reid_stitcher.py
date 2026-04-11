@@ -6,6 +6,18 @@ from core.tracking.reid_gallery import ReIDGallery
 
 logger = logging.getLogger(__name__)
 
+
+def _boxmot_conf_cls(obj: np.ndarray) -> tuple[float, int]:
+    """
+    BoxMOT AABB-выход (N, 8): x1, y1, x2, y2, track_id, conf, cls, det_ind.
+    См. README boxmot — не путать с порядком полей детекции на вход.
+    """
+    n = len(obj)
+    if n >= 8:
+        return float(obj[5]), int(obj[6])
+    return 1.0, 0
+
+
 class ReIDStitcher:
     """
     Класс-координатор для обработки ReID и 'склейки' прерванных треков.
@@ -43,9 +55,7 @@ class ReIDStitcher:
             bbox = (float(obj[0]), float(obj[1]), float(obj[2]), float(obj[3]))
             current_active[tid] = bbox
 
-            # В BoxMOT формат обычно: [x1, y1, x2, y2, id, cls, conf, ...]
-            tr_cls = int(obj[5]) if len(obj) > 5 else 0
-            tr_conf = float(obj[6]) if len(obj) > 6 else 1.0
+            tr_conf, _ = _boxmot_conf_cls(obj)
 
             emb = tracker_embeddings.get(tid)
             if emb is not None:

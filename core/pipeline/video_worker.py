@@ -75,6 +75,67 @@ class VideoWorker(QObject):
         self.max_speed_mode = enabled
         logger.info(f"Режим Max Speed установлен в: {enabled}")
 
+    def _emit_reid_ui_events(self, detections, frame_count):
+        """События для панели Re-ID: склейки, near-miss, периодический снимок галереи."""
+        detector = self.detector
+        if detector is None:
+            return
+        im = detector.identity_manager
+        if not im.enabled:
+            return
+
+        gallery_cfg = config.settings.tracker.gallery
+        thr = gallery_cfg.similarity_threshold
+        spw = gallery_cfg.spatial_penalty_weight
+
+        for det in detections or []:
+            if det.get("is_stitched"):
+                orig = det.get("original_id")
+                canon = det.get("track_id")
+                stitch_key = (orig, canon)
+                if stitch_key not in self._processed_stitches:
+                    self._processed_stitches.add(stitch_key)
+                    self.reid_stitched.emit({
+                        "status": "SUCCESS",
+                        "canonical_id": canon,
+                        "tracker_id": orig,
+                        "old_id": canon,
+                        "new_id": orig,
+                        "stitch_score": det.get("stitch_score", 0.0),
+                        "reid_status": det.get("reid_status", "SUCCESS"),
+                        "similarity_threshold": thr,
+                        "spatial_penalty_weight": spw,
+                        "frame_id": frame_count,
+                        "type": det.get("type", "person"),
+                        "conf": det.get("conf"),
+                        "camera_id": det.get("camera_id"),
+                        "bbox": det.get("bbox"),
+                    })
+            elif det.get("is_near_miss") and frame_count % 30 == 0:
+                self.reid_stitched.emit({
+                    "status": "REJECTED",
+                    "potential_old_id": det.get("potential_old_id"),
+                    "tracker_id": det.get("track_id"),
+                    "old_id": det.get("potential_old_id"),
+                    "new_id": det.get("track_id"),
+                    "stitch_score": det.get("stitch_score", 0.0),
+                    "reid_status": det.get("reid_status", "REJECTED"),
+                    "similarity_threshold": thr,
+                    "spatial_penalty_weight": spw,
+                    "frame_id": frame_count,
+                    "type": det.get("type", "person"),
+                    "conf": det.get("conf"),
+                    "camera_id": det.get("camera_id"),
+                    "bbox": det.get("bbox"),
+                })
+
+        if frame_count % 50 == 0:
+            stats = im.get_gallery_stats()
+            stats["status"] = "GALLERY_UPDATE"
+            stats["similarity_threshold"] = thr
+            stats["spatial_penalty_weight"] = spw
+            self.reid_stitched.emit(stats)
+
     def run(self):
         """
         Основной цикл обработки видео.
@@ -229,43 +290,8 @@ class VideoWorker(QObject):
                     
                     if detections:
                         self.json_data_ready.emit(self.frame_count, detections)
-                        
-                        # Проверка на новые события склейки Re-ID
-                        for det in detections:
-                            # 1. Успешная склейка
-                            if det.get("is_stitched"):
-                                stitch_key = (det["original_id"], det.get("tracker_id", -1))
-                                if stitch_key not in self._processed_stitches:
-                                    self._processed_stitches.add(stitch_key)
-                                    self.reid_stitched.emit({
-                                        "old_id": det["original_id"],
-                                        "new_id": det.get("tracker_id", -1),
-                                        "score": det.get("stitch_score", 0.0),
-                                        "status": "SUCCESS",
-                                        "type": det.get("type", "person")
-                                    })
-                            
-                            # 2. "Близкий промах" (для отладки в логе)
-                            elif det.get("is_near_miss"):
-                                # Чтобы не спамить лог, проверяем near-miss не каждый кадр
-                                if self.frame_count % 30 == 0:
-                                    self.reid_stitched.emit({
-                                        "old_id": det.get("potential_old_id"),
-                                        "new_id": det.get("original_id"),
-                                        "score": det.get("stitch_score", 0.0),
-                                        "status": "REJECTED",
-                                        "type": det.get("type", "person")
-                                    })
-                        
-                        # 3. Периодически обновляем список "ожидающих" (те, кто в базе, но не в кадре)
-                        if self.frame_count % 50 == 0:
-                            pending_ids = self.detector.identity_manager.get_pending_ids()
-                            if pending_ids:
-                                self.reid_stitched.emit({
-                                    "pending_ids": pending_ids,
-                                    "status": "GALLERY_UPDATE"
-                                })
-                        
+                    self._emit_reid_ui_events(detections, self.frame_count)
+
                 else:
                     # Пакетный режим
                     self._batch_buffer.append(frame)
@@ -288,6 +314,7 @@ class VideoWorker(QObject):
                         
                         if detections:
                             self.json_data_ready.emit(self.frame_count, detections)
+                        self._emit_reid_ui_events(detections, self.frame_count)
                     else:
                         detections = self.last_detections
             else:
