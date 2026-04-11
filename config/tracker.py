@@ -26,7 +26,7 @@ class TrackerConfig(BaseTrackerParams):
 
     # Выбор модели Re-ID
     # Только для: DeepSort, DeepOCSort, StrongSort, HybridSort
-    reid_model: str = ReIDModel.CLIP_MSMT
+    reid_model: str = ReIDModel.OSNET_X1_0
 
     # Список классов для отслеживания ([0] для людей)
     classes: List[int] = field(default_factory=lambda: [0])

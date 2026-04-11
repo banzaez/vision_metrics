@@ -12,6 +12,7 @@ ReID Gallery — глобальная галерея признаков для �
 
 import time
 import logging
+import threading
 
 import numpy as np
 
@@ -45,15 +46,20 @@ def _spatial_penalty(bbox_old, bbox_new) -> float:
     cx_new, cy_new = _bbox_center(bbox_new)
 
     # Средний размер человека как нормализатор (diagonal)
-    w_old = abs(bbox_old[2] - bbox_old[0])
-    h_old = abs(bbox_old[3] - bbox_old[1])
-    diag = (w_old ** 2 + h_old ** 2) ** 0.5
-    if diag < 1.0:
+    # Используем среднее между старым и новым боксом для стабильности
+    def get_diag(b):
+        return (abs(b[2] - b[0])**2 + abs(b[3] - b[1])**2)**0.5
+
+    diag_old = get_diag(bbox_old)
+    diag_new = get_diag(bbox_new)
+    avg_diag = (diag_old + diag_new) / 2.0
+
+    if avg_diag < 1.0:
         return 1.0
 
     dist = ((cx_new - cx_old) ** 2 + (cy_new - cy_old) ** 2) ** 0.5
     # Нормализуем на 3 диагонали: дальше — штраф растёт
-    penalty = min(dist / (3.0 * diag), 1.0)
+    penalty = min(dist / (3.0 * avg_diag), 1.0)
     return penalty
 
 
@@ -71,6 +77,7 @@ class ReIDGallery:
             cfg: ReIDCustomConfig — конфигурация из config/reid_custom.py.
         """
         self.cfg = cfg
+        self.lock = threading.RLock()
         self.alias_map: dict[int, int] = {}
 
         # Активные треки: {track_id: np.ndarray} — скользящий усреднённый эмбеддинг
@@ -96,12 +103,6 @@ class ReIDGallery:
         """
         Обновление живого трека новым эмбеддингом.
         Вызывать каждый кадр для каждого активного трека.
-
-        Args:
-            track_id: ID трека от BoxMOT.
-            embedding: numpy-вектор признаков (shape [D]).
-            conf: уверенность детекции.
-            bbox: (x1, y1, x2, y2) — последний бокс в пикселях.
         """
         if embedding is None or embedding.size == 0:
             return
@@ -112,40 +113,38 @@ class ReIDGallery:
 
         emb = embedding.flatten().astype(np.float64)
 
-        if track_id not in self._live_embeddings:
-            self._live_embeddings[track_id] = emb
-        else:
-            # Экспоненциальное скользящее среднее (как в BoxMOT)
-            alpha = 1.0 / self.cfg.embedding_history
-            self._live_embeddings[track_id] = (
-                (1.0 - alpha) * self._live_embeddings[track_id] + alpha * emb
-            )
+        with self.lock:
+            if track_id not in self._live_embeddings:
+                self._live_embeddings[track_id] = emb
+            else:
+                # Экспоненциальное скользящее среднее (как в BoxMOT)
+                alpha = 1.0 / self.cfg.embedding_history
+                self._live_embeddings[track_id] = (
+                    (1.0 - alpha) * self._live_embeddings[track_id] + alpha * emb
+                )
 
     def on_track_lost(self, track_id: int, bbox: tuple) -> None:
         """
         Перенести трек из живых в dead_pool.
         Вызывать когда BoxMOT удалил старый ID.
-
-        Args:
-            track_id: удалённый ID.
-            bbox: последний известный бокс (x1, y1, x2, y2).
         """
-        if track_id not in self._live_embeddings:
-            logger.debug(f"[ReIDGallery] on_track_lost: нет эмбеддинга для id={track_id}")
-            return
+        with self.lock:
+            if track_id not in self._live_embeddings:
+                logger.debug(f"[ReIDGallery] on_track_lost: нет эмбеддинга для id={track_id}")
+                return
 
-        # Обрезаем галерею если она переполнена
-        while len(self._dead_pool) >= self.cfg.max_gallery_size:
-            oldest = min(self._dead_pool, key=lambda k: self._dead_pool[k]["ts"])
-            del self._dead_pool[oldest]
-            self._reversed_map.pop(oldest, None)
+            # Обрезаем галерею если она переполнена
+            while len(self._dead_pool) >= self.cfg.max_gallery_size:
+                oldest = min(self._dead_pool, key=lambda k: self._dead_pool[k]["ts"])
+                del self._dead_pool[oldest]
+                self._reversed_map.pop(oldest, None)
 
-        self._dead_pool[track_id] = {
-            "emb": self._live_embeddings.pop(track_id),
-            "bbox": bbox,
-            "ts": time.time(),
-        }
-        logger.debug(f"[ReIDGallery] Перемещён в dead_pool: id={track_id}")
+            self._dead_pool[track_id] = {
+                "emb": self._live_embeddings.pop(track_id),
+                "bbox": bbox,
+                "ts": time.time(),
+            }
+            logger.debug(f"[ReIDGallery] Перемещён в dead_pool: id={track_id}")
 
     def match_new_track(
         self,
@@ -155,16 +154,8 @@ class ReIDGallery:
     ) -> int | None:
         """
         Поиск совпадения нового трека среди «мёртвых» ID.
-
-        Args:
-            new_id: свежесозданный ID трекера.
-            embedding: эмбеддинг нового трека.
-            bbox: бокс нового трека.
-
-        Returns:
-            old_id если найдено совпадение, иначе None.
         """
-        if embedding is None or embedding.size == 0 or not self._dead_pool:
+        if embedding is None or embedding.size == 0:
             return None
 
         emb = embedding.flatten().astype(np.float64)
@@ -172,104 +163,118 @@ class ReIDGallery:
         best_score = -1.0
         best_cos_sim = 0.0
 
-        for old_id, data in self._dead_pool.items():
-            # Уже "занятый" мёртвый ID пропускаем
-            if old_id in self._reversed_map:
-                continue
+        with self.lock:
+            if not self._dead_pool:
+                return None
 
-            cos_sim = _cosine_similarity(emb, data["emb"])
-            if cos_sim < self.cfg.similarity_threshold:
-                continue
+            for old_id, data in self._dead_pool.items():
+                # Уже "занятый" мёртвый ID пропускаем
+                if old_id in self._reversed_map:
+                    continue
 
-            # Пространственный штраф
-            if self.cfg.spatial_iou_weight > 0.0:
-                penalty = _spatial_penalty(data["bbox"], bbox)
-                score = cos_sim * (1.0 - self.cfg.spatial_iou_weight * penalty)
-            else:
-                score = cos_sim
+                cos_sim = _cosine_similarity(emb, data["emb"])
+                
+                # Пространственный штраф
+                if self.cfg.spatial_iou_weight > 0.0:
+                    penalty = _spatial_penalty(data["bbox"], bbox)
+                    score = cos_sim * (1.0 - self.cfg.spatial_iou_weight * penalty)
+                else:
+                    score = cos_sim
 
-            if score > best_score:
-                best_score = score
-                best_id = old_id
-                best_cos_sim = cos_sim
+                # Порог проверяем ПОСЛЕ учета всех штрафов
+                if score < self.cfg.similarity_threshold:
+                    continue
 
-        if best_id is not None:
-            self._reversed_map[best_id] = new_id
-            logger.info(
-                f"[ReIDGallery] Склейка: new_id={new_id} → old_id={best_id} "
-                f"(cosine={best_cos_sim:.3f})"
-            )
+                if score > best_score:
+                    best_score = score
+                    best_id = old_id
+                    best_cos_sim = cos_sim
+
+            if best_id is not None:
+                self._reversed_map[best_id] = new_id
+                logger.info(
+                    f"[ReIDGallery] Склейка: new_id={new_id} → old_id={best_id} "
+                    f"(score={best_score:.3f}, cos={best_cos_sim:.3f})"
+                )
 
         return best_id
 
     def apply_alias(self, track_id: int) -> int:
         """
         Применить alias_map к track_id.
-        Рекурсивно раскрывает цепочки алиасов.
-
-        Args:
-            track_id: входной ID.
-
-        Returns:
-            Канонический (старейший) ID.
+        Рекурсивно раскрывает цепочки алиасов с оптимизацией Path Compression.
         """
-        visited = set()
-        current = track_id
-        while current in self.alias_map and current not in visited:
-            visited.add(current)
-            current = self.alias_map[current]
-        return current
+        with self.lock:
+            if track_id not in self.alias_map:
+                return track_id
 
+            visited = set()
+            current = track_id
+            path = []
+            while current in self.alias_map and current not in visited:
+                path.append(current)
+                visited.add(current)
+                current = self.alias_map[current]
+            
+            # Path Compression: записываем финальный ID для всех узлов пути
+            for node in path:
+                self.alias_map[node] = current
+                
+            return current
+    
     def cleanup(self) -> None:
         """Удалить устаревшие записи из dead_pool."""
         now = time.time()
-        expired = [
-            tid for tid, data in self._dead_pool.items()
-            if (now - data["ts"]) > self.cfg.max_age_seconds
-        ]
-        for tid in expired:
-            del self._dead_pool[tid]
-            self._reversed_map.pop(tid, None)
-        if expired:
-            logger.debug(f"[ReIDGallery] Очистка: удалено {len(expired)} устаревших записей")
+        with self.lock:
+            expired = [
+                tid for tid, data in self._dead_pool.items()
+                if (now - data["ts"]) > self.cfg.max_age_seconds
+            ]
+            for tid in expired:
+                del self._dead_pool[tid]
+                self._reversed_map.pop(tid, None)
+            if expired:
+                logger.debug(f"[ReIDGallery] Очистка: удалено {len(expired)} устаревших записей")
 
     def remove_track(self, track_id: int) -> None:
         """
         Принудительное удаление трека из всех внутренних структур.
         Вызывается при эвикции трека из основного хранилища (LRU).
         """
-        self._live_embeddings.pop(track_id, None)
-        self._dead_pool.pop(track_id, None)
-        self._reversed_map.pop(track_id, None)
-        # Мы не трогаем alias_map, чтобы сохранить цепочки склеек для активных ID
+        with self.lock:
+            self._live_embeddings.pop(track_id, None)
+            self._dead_pool.pop(track_id, None)
+            self._reversed_map.pop(track_id, None)
+            # Мы не трогаем alias_map, чтобы сохранить цепочки склеек для активных ID
 
     def extract_embeddings_from_tracker(self, tracker) -> dict[int, np.ndarray]:
         """
         Извлечение текущих эмбеддингов из внутренних структур BoxMOT-трекера.
-        Поддерживает трекеры с атрибутом active_tracks (HybridSort, BoTSORT, DeepOCSort и др.)
-
-        Args:
-            tracker: экземпляр BoxMOT-трекера.
-
-        Returns:
-            Словарь {track_id: embedding_vector}.
+        Поддерживает трекеры с атрибутом active_tracks или tracked_stracks.
         """
         result = {}
 
-        # Большинство трекеров используют self.active_tracks (список объектов с .id и .smooth_feat)
+        # 1. Поиск атрибута со списком треков
+        # (Проверяем оба на случай кастомных сборок или смены версий)
+        tracks_list = []
         if hasattr(tracker, "active_tracks"):
-            for trk in tracker.active_tracks:
-                tid = getattr(trk, "id", None)
-                feat = getattr(trk, "smooth_feat", None)
-                if tid is not None and feat is not None:
-                    result[tid] = np.array(feat, dtype=np.float64)
+            tracks_list.extend(tracker.active_tracks)
+        if hasattr(tracker, "tracked_stracks"):
+            # Добавляем только те, которых еще нет в списке по ID
+            existing_ids = {getattr(t, "id", getattr(t, "track_id", None)) for t in tracks_list}
+            for t in tracker.tracked_stracks:
+                tid = getattr(t, "track_id", getattr(t, "id", None))
+                if tid not in existing_ids:
+                    tracks_list.append(t)
 
-        # BotSort / StrongSort используют self.tracked_stracks
-        elif hasattr(tracker, "tracked_stracks"):
-            for trk in tracker.tracked_stracks:
-                tid = getattr(trk, "track_id", None)
-                feat = getattr(trk, "smooth_feat", None)
-                if tid is not None and feat is not None:
-                    result[tid] = np.array(feat, dtype=np.float64)
+        # 2. Извлечение данных из объектов
+        for trk in tracks_list:
+            # Пытаемся получить ID (разные трекеры используют id или track_id)
+            tid = getattr(trk, "id", getattr(trk, "track_id", None))
+            # Пытаемся получить эмбеддинг (smooth_feat — стандарт для BoTSORT/HybridSort)
+            feat = getattr(trk, "smooth_feat", getattr(trk, "curr_feat", None))
+            
+            if tid is not None and feat is not None:
+                result[tid] = np.array(feat, dtype=np.float64)
 
         return result

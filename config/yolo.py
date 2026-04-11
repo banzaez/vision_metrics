@@ -28,10 +28,10 @@ class YOLOParams:
     path_to_models: str = "./data/models/"
 
     # Имя файла весов модели YOLO (.pt)
-    weights: str = path_to_models + YOLOModel.YOLO26L_SEG.value
+    weights: str = path_to_models + YOLOModel.YOLO26L.value
 
     # Размер изображения для инференса (640, 960, 1280)
-    imgsz: int = YOLOImageSize.L.value
+    imgsz: int = YOLOImageSize.M.value
 
     # Порог уверенности: детекции ниже этого значения игнорируются для конечного вывода.
     conf_threshold: float = 0.30
@@ -40,7 +40,7 @@ class YOLOParams:
     iou_threshold: float = 0.5
 
     # Классово-независимая фильтрация (NMS): удаляет пересекающиеся боксы разных классов
-    agnostic_nms: bool = True
+    agnostic_nms: bool = False
     
-    # Использовать высокоточные маски (более медленно, но точнее)
-    retina_masks: bool = True
+    # Использовать высокоточные маски (более медленно, но точнее) ДЛЯ МОДЕЛЕЙ С ПРИПИСКОЙ _SEG
+    retina_masks: bool = False

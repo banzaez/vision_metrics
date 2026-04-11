@@ -36,3 +36,27 @@ class PersonData:
             "type": self.last_type,
             "ema": self.ema
         }
+
+    def merge_from(self, other: 'PersonData') -> None:
+        """
+        Сливает данные из другого объекта (обычно старого фрагмента трека) в текущий.
+        Помогает сохранить непрерывную историю при склейке (Re-ID Stitching).
+        """
+        if other is None or other is self:
+            return
+
+        # 1. Наследование временных меток (берем самое раннее)
+        self.start_frame = min(self.start_frame, other.start_frame)
+        self.start_timestamp = min(self.start_timestamp, other.start_timestamp)
+
+        # 2. Слияние истории классификации (старые данные в начало очереди)
+        # extendleft работает за O(k), reversed за O(k). Итого O(k) вместо O(k^2)
+        if other.history:
+            self.history.extendleft(reversed(other.history))
+
+        # 3. Перенос накопленных метрик
+        self.ema = other.ema
+        self.zone_frames += other.zone_frames
+
+        # Примечание: last_bbox, prev_bbox и last_type обычно оставляем от нового трека,
+        # так как они отражают текущее визуальное состояние.

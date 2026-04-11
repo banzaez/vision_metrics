@@ -163,8 +163,8 @@ class DetectorTracker:
         """Очистка ресурсов и инкремент счетчиков после каждого кадра."""
         self._frame_count += 1
         
-        # Периодическая очистка кэша ReID
-        if self.reid_gallery and self._frame_count % 60 == 0:
+        # Периодическая очистка кэша ReID (каждые 10 кадров)
+        if self.reid_gallery and self._frame_count % 10 == 0:
             self.reid_gallery.cleanup()
 
         # LRU Очистка старых треков

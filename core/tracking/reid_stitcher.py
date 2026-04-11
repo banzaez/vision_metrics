@@ -25,6 +25,14 @@ class ReIDStitcher:
         if not self.gallery:
             return
 
+        # 0. Проверка на прогрев (на самом первом кадре некого склеивать)
+        if not self._prev_active_ids:
+            # Инициализируем список ID и выходим
+            for obj in tracked_objects:
+                tid = int(obj[4])
+                self._prev_active_ids.add(tid)
+            return
+
         # 1. Извлечение эмбеддингов
         tracker_embeddings = self.gallery.extract_embeddings_from_tracker(tracker)
 
@@ -43,16 +51,13 @@ class ReIDStitcher:
         current_ids = set(current_active.keys())
 
         # 3. Обработка исчезнувших треков (lost) c GRACE PERIOD
-        # Те, кто были, но исчезли в этом кадре
         lost_now = self._prev_active_ids - current_ids
         for tid in lost_now:
             self._missing_counts[tid] = self._missing_counts.get(tid, 0) + 1
         
-        # Если трек вернулся — забываем про него
         for tid in current_ids:
             self._missing_counts.pop(tid, None)
 
-        # Если трек отсутствует слишком долго — фиксируем потерю
         to_finalize = [tid for tid, count in self._missing_counts.items() if count >= self._grace_period]
         for tid in to_finalize:
             person = self.tracks.get(tid)
@@ -83,22 +88,19 @@ class ReIDStitcher:
         old_data = self.tracks.get(old_id)
         new_data = self.tracks.get(new_id)
 
-        if old_data is None or old_data is new_data:
+        if old_data is None:
+            # Если старый ID уже вытеснен из памяти (LRU), склейка истории невозможна
+            logger.debug(f"[ReIDStitcher] Не удалось склеить историю: old_id={old_id} не найден в tracks")
             return
 
-        if new_data is None:
-            self.tracks[new_id] = old_data
+        if new_data is None or old_data is new_data:
             return
 
-        # Наследование параметров
-        new_data.ema = old_data.ema
-        new_data.zone_frames = old_data.zone_frames
-        new_data.start_frame = old_data.start_frame
-        new_data.start_timestamp = old_data.start_timestamp
+        # Используем инкапсулированный метод слияния
+        new_data.merge_from(old_data)
         
-        # Слияние истории (appendleft с конца старого списка)
-        old_history = list(old_data.history)
-        for h in reversed(old_history):
-            new_data.history.appendleft(h)
+        # ВАЖНО: Удаляем старый ID из основного хранилища, чтобы не плодить дубли
+        # и не занимать место в LRU-лимите.
+        self.tracks.pop(old_id, None)
         
-        logger.debug(f"[ReIDStitcher] Склейка ID: {new_id} <- {old_id}")
+        logger.debug(f"[ReIDStitcher] Склейка данных: {new_id} <- {old_id} (история объединена)")

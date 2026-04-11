@@ -19,7 +19,7 @@ class PerformanceConfig:
     device: str = field(default_factory=get_optimal_device)
 
     # FP16 режим (рекомендуется для Mac M1)
-    half: bool = False
+    half: bool = True
 
     # Размер пакета кадров для YOLO (batch size).
     # При 1 - минимальная задержка, при > 1 - выше пропускная способность.
@@ -46,9 +46,6 @@ class UIConfig:
     # Флаг отображения мониторинга ресурсов (FPS, CPU, GPU, RAM)
     show_monitoring: bool = True
 
-    def __post_init__(self):
-        if self.step_frames < 1:
-            raise ValueError(f"step_frames must be >= 1, got {self.step_frames}")
 
 @dataclass
 class SystemConfig:
