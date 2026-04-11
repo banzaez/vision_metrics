@@ -43,20 +43,28 @@ class ReIDStitcher:
             bbox = (float(obj[0]), float(obj[1]), float(obj[2]), float(obj[3]))
             current_active[tid] = bbox
 
+            # В BoxMOT формат обычно: [x1, y1, x2, y2, id, cls, conf, ...]
+            tr_cls = int(obj[5]) if len(obj) > 5 else 0
+            tr_conf = float(obj[6]) if len(obj) > 6 else 1.0
+
             emb = tracker_embeddings.get(tid)
             if emb is not None:
-                tr_conf = float(obj[5]) if len(obj) > 5 else 0.5
                 self.gallery.feed_active(tid, emb, tr_conf, bbox)
 
         current_ids = set(current_active.keys())
 
         # 3. Обработка исчезнувших треков (lost) c GRACE PERIOD
-        lost_now = self._prev_active_ids - current_ids
-        for tid in lost_now:
-            self._missing_counts[tid] = self._missing_counts.get(tid, 0) + 1
-        
-        for tid in current_ids:
-            self._missing_counts.pop(tid, None)
+        newly_lost = self._prev_active_ids - current_ids
+        for tid in newly_lost:
+            self._missing_counts[tid] = 1
+
+        for tid in list(self._missing_counts.keys()):
+            if tid in current_ids:
+                # Если человек вернулся до конца grace period - обнуляем счетчик
+                self._missing_counts.pop(tid)
+            elif tid not in newly_lost:
+                # Увеличиваем счетчик для тех, кто отсутствует уже больше одного кадра
+                self._missing_counts[tid] += 1
 
         to_finalize = [tid for tid, count in self._missing_counts.items() if count >= self._grace_period]
         for tid in to_finalize:
@@ -106,6 +114,8 @@ class ReIDStitcher:
         # Если для нового ID еще нет PersonData (он только появился), 
         # мы можем просто переименовать старый объект в хранилище.
         if new_id not in self.tracks:
+            old_data.track_id = new_id
+            old_data.is_stitched = True
             self.tracks[new_id] = old_data
             self.tracks.pop(old_id, None)
             logger.debug(f"[ReIDStitcher] ID {old_id} переименован в {new_id} (новые данные еще не созданы)")
@@ -115,6 +125,7 @@ class ReIDStitcher:
         if new_data and old_data is not new_data:
             # Используем инкапсулированный метод слияния
             new_data.merge_from(old_data)
+            new_data.is_stitched = True
             # Удаляем старый ID
             self.tracks.pop(old_id, None)
             logger.debug(f"[ReIDStitcher] Склейка истории: {old_id} -> {new_id}")

@@ -1,4 +1,3 @@
-from collections import OrderedDict
 import logging
 import time
 import numpy as np
@@ -9,8 +8,8 @@ from core.analytics.zone_manager import ZoneManager
 from core.detection.yolo_detector import YOLODetector
 from core.tracking.tracking_service import TrackingService
 from core.tracking.track_processor import TrackProcessor
-from core.tracking.reid_gallery import ReIDGallery
-from core.tracking.reid_stitcher import ReIDStitcher
+from core.tracking.track_registry import TrackRegistry
+from core.tracking.identity_manager import IdentityManager
 from core.utils import crop_roi, filter_detections
 
 logger = logging.getLogger(__name__)
@@ -22,17 +21,24 @@ class DetectorTracker:
         cfg_ident = config.settings.analytics.ident
         self.camera_id = camera_id
 
-        # Подсистемы
+        # 1. Основные подсистемы
         self.detector = YOLODetector(model_path, device)
         self.tracking_service = TrackingService(device, half)
         self.role_classifier = RoleClassifier()
         self.zone_manager = ZoneManager()
 
-        # Состояние
-        self.tracks = OrderedDict()  # track_id -> PersonData
-        self._max_total_ids = cfg_ident.max_tracked_ids
+        # 2. Хранилище треков с автоматической очисткой зависимых кэшей
+        self.tracks = TrackRegistry(max_ids=cfg_ident.max_tracked_ids)
+        
+        # 3. Менеджер личностей (ReID + Stitching)
+        gallery_cfg = config.settings.tracker.gallery
+        self.identity_manager = IdentityManager(gallery_cfg, self.tracks)
 
-        # Процессор треков (бизнес-логика каждого объекта)
+        # Привязываем очистку кэшей к эвикции трека
+        self.tracks.add_on_evict_callback(self.role_classifier.remove_track_data)
+        self.tracks.add_on_evict_callback(self.identity_manager.remove_track)
+
+        # 4. Процессор треков (бизнес-логика)
         self.track_processor = TrackProcessor(
             camera_id=self.camera_id,
             zone_manager=self.zone_manager,
@@ -41,15 +47,10 @@ class DetectorTracker:
             history_length=cfg_ident.history_length
         )
 
-        # Re-ID и склейка треков
-        gallery_cfg = config.settings.tracker.gallery
-        self.reid_gallery = ReIDGallery(gallery_cfg) if gallery_cfg.enabled else None
-        self.stitcher = ReIDStitcher(self.reid_gallery, self.tracks) if self.reid_gallery else None
-
         self._frame_count = 0
         self.fps = 25.0
         self.data_logger = None
-        logger.info("DetectorTracker инициализирован.")
+        logger.info("DetectorTracker инициализирован с использованием TrackRegistry и IdentityManager.")
 
     def process_frame(self, frame, frame_id, timestamp=None, roi=None, staff_zones=None):
         """Основной цикл обработки одного кадра."""
@@ -99,35 +100,21 @@ class DetectorTracker:
         if tracked_objects is None or len(tracked_objects) == 0:
             return [], set()
 
-        # 3. Re-ID и Stitching
-        if self.stitcher:
-            if self.reid_gallery:
-                self.reid_gallery.stitch_scores.clear()
-            self.stitcher.update(tracked_objects, self.tracking_service.tracker)
+        # 3. Re-ID и Stitching (Identity Management)
+        self.identity_manager.update(tracked_objects, self.tracking_service.tracker)
 
         # 4. Обработка каждого объекта
         detections, active_ids = [], set()
         for obj in tracked_objects:
+            # Обработка бизнес-логики (зоны, роль, история)
             det = self.track_processor.process_track(
                 obj, boxes, masks, input_frame, x_off, y_off, current_frame_id, timestamp
             )
+            
             if det:
-                if self.reid_gallery:
-                    orig_id = det["track_id"]
-                    stitch_data = self.reid_gallery.stitch_scores.get(orig_id, {})
-                    if stitch_data:
-                        det["stitch_score"] = stitch_data.get("score", 0.0)
-                        det["reid_status"] = stitch_data.get("status", "NONE")
-                        
-                        if stitch_data.get("status") == "SUCCESS":
-                            canonical_id = self.reid_gallery.apply_alias(orig_id)
-                            det["track_id"] = canonical_id
-                            det["is_stitched"] = True
-                            det["original_id"] = orig_id
-                        elif stitch_data.get("status") == "REJECTED":
-                            det["is_near_miss"] = True
-                            det["original_id"] = orig_id
-                            det["potential_old_id"] = stitch_data.get("old_id")
+                # Накладываем финальную личность (стабильный ID из ReID)
+                identity_meta = self.identity_manager.get_identity_metadata(det["track_id"])
+                det.update(identity_meta)
                 
                 detections.append(det)
                 active_ids.add(det["track_id"])
@@ -179,12 +166,8 @@ class DetectorTracker:
         self._frame_count += 1
         
         # Периодическая очистка кэша ReID (каждые 10 кадров)
-        if self.reid_gallery and self._frame_count % 10 == 0:
-            self.reid_gallery.cleanup()
+        if self.identity_manager.enabled and self._frame_count % 10 == 0:
+            self.identity_manager.gallery.cleanup()
 
-        # LRU Очистка старых треков
-        while len(self.tracks) > self._max_total_ids:
-            tid, _ = self.tracks.popitem(last=False)
-            self.role_classifier.remove_track_data(tid)
-            if self.reid_gallery:
-                self.reid_gallery.remove_track(tid)
+        # Примечание: Эвикция старых PersonData теперь происходит 
+        # автоматически внутри TrackRegistry (self.tracks) при каждом добавлении.

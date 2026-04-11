@@ -234,12 +234,12 @@ class VideoWorker(QObject):
                         for det in detections:
                             # 1. Успешная склейка
                             if det.get("is_stitched"):
-                                stitch_key = (det["original_id"], det["track_id"])
+                                stitch_key = (det["original_id"], det.get("tracker_id", -1))
                                 if stitch_key not in self._processed_stitches:
                                     self._processed_stitches.add(stitch_key)
                                     self.reid_stitched.emit({
-                                        "old_id": det["track_id"],
-                                        "new_id": det["original_id"],
+                                        "old_id": det["original_id"],
+                                        "new_id": det.get("tracker_id", -1),
                                         "score": det.get("stitch_score", 0.0),
                                         "status": "SUCCESS",
                                         "type": det.get("type", "person")
@@ -256,6 +256,15 @@ class VideoWorker(QObject):
                                         "status": "REJECTED",
                                         "type": det.get("type", "person")
                                     })
+                        
+                        # 3. Периодически обновляем список "ожидающих" (те, кто в базе, но не в кадре)
+                        if self.frame_count % 50 == 0:
+                            pending_ids = self.detector.identity_manager.get_pending_ids()
+                            if pending_ids:
+                                self.reid_stitched.emit({
+                                    "pending_ids": pending_ids,
+                                    "status": "GALLERY_UPDATE"
+                                })
                         
                 else:
                     # Пакетный режим

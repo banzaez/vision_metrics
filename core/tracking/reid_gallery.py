@@ -196,9 +196,13 @@ class ReIDGallery:
                         best_id = old_id
 
             if best_id is not None:
+                # Находим самый старый ID в цепочке (канонический)
+                canonical_id = self.apply_alias(best_id)
+                self.alias_map[new_id] = canonical_id
                 self._reversed_map[best_id] = new_id
-                logger.info(f"[ReIDGallery] Склейка: {new_id} → {best_id} (sc:{best_score:.3f})")
-                return best_id, best_score, "SUCCESS"
+                
+                logger.info(f"[ReIDGallery] Склейка: {new_id} → {canonical_id} (через {best_id}, sc:{best_score:.3f})")
+                return canonical_id, best_score, "SUCCESS"
             
             # Если склейка не прошла, но был сильный кандидат (> 0.5)
             if best_overall_id is not None and best_overall_score > 0.5:
@@ -280,31 +284,37 @@ class ReIDGallery:
     def extract_embeddings_from_tracker(self, tracker) -> dict[int, np.ndarray]:
         """
         Извлечение текущих эмбеддингов из внутренних структур BoxMOT-трекера.
-        Поддерживает трекеры с атрибутом active_tracks или tracked_stracks.
+        Поддерживает вложенные трекеры и различные версии именования атрибутов.
         """
         result = {}
-
-        # 1. Поиск атрибута со списком треков
-        # (Проверяем оба на случай кастомных сборок или смены версий)
         tracks_list = []
-        if hasattr(tracker, "active_tracks"):
-            tracks_list.extend(tracker.active_tracks)
-        if hasattr(tracker, "tracked_stracks"):
-            # Добавляем только те, которых еще нет в списке по ID
-            existing_ids = {getattr(t, "id", getattr(t, "track_id", None)) for t in tracks_list}
-            for t in tracker.tracked_stracks:
-                tid = getattr(t, "track_id", getattr(t, "id", None))
-                if tid not in existing_ids:
-                    tracks_list.append(t)
 
-        # 2. Извлечение данных из объектов
+        # 1. Поиск списка треков (включая вложенные структуры BoxMOT)
+        def _collect_tracks(obj):
+            if hasattr(obj, "active_tracks"):
+                tracks_list.extend(obj.active_tracks)
+            if hasattr(obj, "tracked_stracks"):
+                tracks_list.extend(obj.tracked_stracks)
+            if hasattr(obj, "tracker"): # Рекурсивный поиск в обертке
+                _collect_tracks(obj.tracker)
+
+        _collect_tracks(tracker)
+
+        # 2. Извлечение данных из объектов (убираем дубли по ID)
+        seen_ids = set()
         for trk in tracks_list:
-            # Пытаемся получить ID (разные трекеры используют id или track_id)
             tid = getattr(trk, "id", getattr(trk, "track_id", None))
-            # Пытаемся получить эмбеддинг (smooth_feat — стандарт для BoTSORT/HybridSort)
+            if tid is None or tid in seen_ids:
+                continue
+            
+            # smooth_feat — стандарт для BoTSORT/HybridSort/StrongSort в BoxMOT
             feat = getattr(trk, "smooth_feat", getattr(trk, "curr_feat", None))
             
-            if tid is not None and feat is not None:
+            if feat is not None:
                 result[tid] = np.array(feat, dtype=np.float64)
+                seen_ids.add(tid)
 
+        if result:
+             logger.debug(f"[ReIDGallery] Извлечено {len(result)} признаков из трекера")
+        
         return result

@@ -24,6 +24,7 @@ class PersonData:
     # Состояние
     zone_frames: int = 0
     last_type: str = "CLIENT"
+    is_stitched: bool = False
     
     def to_dict(self, frame_id, timestamp):
         """Преобразование текущего состояния в формат для сохранения/логов."""
@@ -34,7 +35,8 @@ class PersonData:
             "bbox": self.last_bbox,
             "timestamp": timestamp,
             "type": self.last_type,
-            "ema": self.ema
+            "ema": self.ema,
+            "is_stitched": self.is_stitched
         }
 
     def merge_from(self, other: 'PersonData') -> None:

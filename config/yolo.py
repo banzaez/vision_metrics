@@ -28,7 +28,7 @@ class YOLOParams:
     path_to_models: str = "./data/models/"
 
     # Имя файла весов модели YOLO (.pt)
-    weights: str = path_to_models + YOLOModel.YOLO26L.value
+    weights: str = path_to_models + YOLOModel.YOLO26S.value
 
     # Размер изображения для инференса (640, 960, 1280)
     imgsz: int = YOLOImageSize.M.value
