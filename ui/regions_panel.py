@@ -45,12 +45,14 @@ class RegionsPanel(QGroupBox):
         self.layout.setSpacing(4)
         self.layout.setContentsMargins(5, 5, 5, 5)
         
-        # Кнопки (делаем их компактнее)
+        # Кнопки: единый размер и стиль (системная тема)
         self.btn_roi = QPushButton("Set ROI")
         self.btn_staff = QPushButton("+ Staff")
         self.btn_del_selected = QPushButton("Del")
-        self.btn_del_selected.setStyleSheet("background-color: #442222;")
         self.btn_clear = QPushButton("Clear All")
+        _btn_min_h = 28
+        for b in (self.btn_roi, self.btn_staff, self.btn_del_selected, self.btn_clear):
+            b.setMinimumHeight(_btn_min_h)
         
         # Список текущих зон
         self.zones_list = QListWidget()
@@ -62,6 +64,8 @@ class RegionsPanel(QGroupBox):
         self.layout.addWidget(self.zones_list, 1, 0, 1, 2)
         self.layout.addWidget(self.btn_del_selected, 2, 0)
         self.layout.addWidget(self.btn_clear, 2, 1)
+        self.layout.setColumnStretch(0, 1)
+        self.layout.setColumnStretch(1, 1)
         
         # Ограничиваем общую высоту всей панели (даем больше места)
         self.setMaximumHeight(200)

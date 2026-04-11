@@ -48,9 +48,7 @@ class StatsPanel(QGroupBox):
         for row, det in enumerate(sorted_detections):
             tid_val = det.get('track_id', '?')
             tid = f"#{tid_val}"
-            if det.get("is_stitched"):
-                tid += " (S)"
-            
+
             dtype = det.get("type", "person").upper()
 
             # Форматируем время в "ММ:СС"

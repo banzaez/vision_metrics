@@ -8,15 +8,6 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
 from PyQt6.QtGui import QImage, QPixmap, QShortcut, QKeySequence
 from PyQt6.QtCore import Qt, pyqtSlot, QTimer
 
-# Импорт вынесенных UI-компонентов
-from ui.regions_panel import RegionsPanel
-from ui.stats_panel import StatsPanel
-from ui.video_controls import VideoControlPanel
-from ui.resource_monitor import ResourceMonitorWidget
-from ui.engine_status import EngineStatusWidget
-from ui.json_inspector import JsonInspectorWidget
-from ui.reid_panel import ReIDStitchPanel
-
 logger = logging.getLogger(__name__)
 
 class MainWindow(QMainWindow):
@@ -30,6 +21,10 @@ class MainWindow(QMainWindow):
         
         self.worker_thread = worker_thread
         self.video_worker = video_worker
+        
+        # Lazy-loaded UI components
+        self._regions_panel = None
+        self._stats_panel = None
         
         # Таймер для сохранения настроек окна с задержкой (чтобы не писать на диск слишком часто)
         self.save_timer = QTimer()
@@ -47,6 +42,7 @@ class MainWindow(QMainWindow):
         self.left_layout.setContentsMargins(0, 0, 0, 0)
         
         # ПАНЕЛЬ МОНИТОРИНГА РЕСУРСОВ (Общая для всех вкладок)
+        from ui.resource_monitor import ResourceMonitorWidget
         self.perf_monitor = ResourceMonitorWidget()
         if not config.settings.system.ui.show_monitoring:
             self.perf_monitor.hide()
@@ -62,6 +58,7 @@ class MainWindow(QMainWindow):
         self.video_layout.setContentsMargins(0, 5, 0, 0)
         
         # ПАНЕЛЬ СТАТУСА МОДЕЛЕЙ (Engine Status)
+        from ui.engine_status import EngineStatusWidget
         self.engine_status = EngineStatusWidget()
         self.video_layout.addWidget(self.engine_status)
 
@@ -72,6 +69,7 @@ class MainWindow(QMainWindow):
         self.video_layout.addWidget(self.video_label, stretch=1)
         
         # Панель управления видео (пауза, перемотка)
+        from ui.video_controls import VideoControlPanel
         self.video_controls = VideoControlPanel(self.video_worker)
         self.video_layout.setSpacing(0) # Убираем зазор между монитором, видео и контролами
         self.video_layout.addWidget(self.video_controls, stretch=0)
@@ -80,6 +78,7 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.video_container, "Live Video")
         
         # Вкладка 2: Инспектор данных JSON
+        from ui.json_inspector import JsonInspectorWidget
         self.json_inspector = JsonInspectorWidget()
         # Убираем внутренние рамки группы для полноэкранной вкладки
         self.json_inspector.setStyleSheet("QGroupBox { border: none; }")
@@ -91,17 +90,8 @@ class MainWindow(QMainWindow):
         self.side_panel = QWidget()
         self.side_layout = QVBoxLayout(self.side_panel)
         
-        # Компонент управления регионами
-        self.regions_panel = RegionsPanel(self.video_worker)
         self.side_layout.addWidget(self.regions_panel)
-        
-        # Компонент мониторинга (статистика)
-        self.stats_panel = StatsPanel()
         self.side_layout.addWidget(self.stats_panel)
-
-        # Компонент лога Re-ID (склейки)
-        self.reid_panel = ReIDStitchPanel()
-        self.side_layout.addWidget(self.reid_panel)
 
         self.main_layout.addWidget(self.side_panel, 3)
 
@@ -114,13 +104,32 @@ class MainWindow(QMainWindow):
         self.video_worker.stats_updated.connect(self.stats_panel.update_stats, Qt.ConnectionType.QueuedConnection)
         self.video_worker.json_data_ready.connect(self.json_inspector.update_json, Qt.ConnectionType.QueuedConnection)
         self.video_worker.performance_updated.connect(self.perf_monitor.update_metrics, Qt.ConnectionType.QueuedConnection)
-        self.video_worker.reid_stitched.connect(self.reid_panel.add_event, Qt.ConnectionType.QueuedConnection)
         self.video_worker.error_occurred.connect(self.show_error, Qt.ConnectionType.QueuedConnection)
         
         # Настройка горячих клавиш через QShortcut (работают независимо от фокуса)
         QShortcut(QKeySequence(Qt.Key.Key_Space), self, self.video_controls.trigger_pause)
         QShortcut(QKeySequence(Qt.Key.Key_Left), self, self.video_controls.step_backward)
         QShortcut(QKeySequence(Qt.Key.Key_Right), self, self.video_controls.step_forward)
+
+    def _get_regions_panel(self):
+        if self._regions_panel is None:
+            from ui.regions_panel import RegionsPanel
+            self._regions_panel = RegionsPanel(self.video_worker)
+        return self._regions_panel
+    
+    @property
+    def regions_panel(self):
+        return self._get_regions_panel()
+    
+    def _get_stats_panel(self):
+        if self._stats_panel is None:
+            from ui.stats_panel import StatsPanel
+            self._stats_panel = StatsPanel()
+        return self._stats_panel
+    
+    @property
+    def stats_panel(self):
+        return self._get_stats_panel()
 
     def load_window_settings(self):
         """Загружает положение и размер окна из файла настроек."""

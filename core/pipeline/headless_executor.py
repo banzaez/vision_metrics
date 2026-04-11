@@ -2,10 +2,9 @@ import cv2
 import os
 import logging
 import config
-from core.pipeline.orchestrator import DetectorTracker
-from core.analytics.data_logger import JSONDataLogger
-from utils.filename_parser import extract_camera_id, parse_nvr_filename
-from utils.monitor import ResourceMonitor
+from core.pipeline.factory import PipelineFactory
+from utils.filename_parser import parse_nvr_filename
+from core.analytics.monitor import ResourceMonitor
 
 logger = logging.getLogger(__name__)
 
@@ -30,58 +29,47 @@ class HeadlessExecutor:
         """Запускает полный цикл обработки видео с поддержкой батчей."""
         self.running = True
         
-        # 1. Загрузка компонентов
-        try:
-            cfg_perf = config.settings.system.perf
-            cfg_analytics = config.settings.analytics
-            
-            filename = os.path.basename(self.source_path)
-            nvr_meta = parse_nvr_filename(filename)
-            extracted_camera_id = nvr_meta.get("camera_id", "unknown")
-
-            self.detector = DetectorTracker(
-                model_path=self.weights,
-                camera_id=extracted_camera_id,
-                device=self.device,
-                half=cfg_perf.half
-            )
-            
-            # Инициализация и настройка логгера (вся логика путей теперь внутри!)
-            self.data_logger = JSONDataLogger()
-            self.data_logger.setup_from_video(self.source_path)
-            
-        except Exception as e:
-            logger.error(f"Ошибка инициализации HeadlessExecutor: {e}")
-            return False
-
-        # 2. Видео захват
+        cfg_perf = config.settings.system.perf
+        cfg_analytics = config.settings.analytics
+        
         cap = cv2.VideoCapture(self.source_path)
         if not cap.isOpened():
             logger.error(f"Не удалось открыть источник: {self.source_path}")
             return False
 
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        
-        # Передаем метаданные логгеру
-        meta = {
-            "camera_id": self.detector.camera_id,
-            "filename": filename,
-            "fps": float(fps) if fps > 0 else 25.0,
-            "width": width,
-            "height": height,
-            "total_frames": total_frames
-        }
-        self.data_logger.metadata = meta
-        # Добавляем расширенные данные из имени файла
-        self.data_logger.metadata.update(nvr_meta)
-        self.data_logger.open()
-        
-        # Настраиваем оркестратор (унифицированная логика)
-        self.detector.fps = meta["fps"]
-        self.detector.data_logger = self.data_logger
+        try:
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            
+            filename = os.path.basename(self.source_path)
+            nvr_meta = parse_nvr_filename(filename)
+            camera_id = nvr_meta.get("camera_id", "unknown")
+
+            meta = {
+                "camera_id": camera_id,
+                "filename": filename,
+                "fps": float(fps) if fps > 0 else 25.0,
+                "width": width,
+                "height": height,
+                "total_frames": total_frames
+            }
+            meta.update(nvr_meta)
+
+            self.detector, _ = PipelineFactory.create_detector_tracker(self.source_path, camera_id_override=camera_id)
+            self.detector.fps = meta["fps"]
+
+            self.data_logger, _ = PipelineFactory.create_data_logger(self.source_path)
+            self.data_logger.metadata = meta
+            self.data_logger.open()
+            
+            self.detector.data_logger = self.data_logger
+
+        except Exception as e:
+            logger.error(f"Ошибка инициализации HeadlessExecutor: {e}")
+            cap.release()
+            return False
         
         if 'on_duration' in self.callbacks:
             self.callbacks['on_duration'](total_frames)

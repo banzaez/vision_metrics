@@ -9,7 +9,6 @@ from core.detection.yolo_detector import YOLODetector
 from core.tracking.tracking_service import TrackingService
 from core.tracking.track_processor import TrackProcessor
 from core.tracking.track_registry import TrackRegistry
-from core.tracking.identity_manager import IdentityManager
 from core.utils import crop_roi, filter_detections
 
 logger = logging.getLogger(__name__)
@@ -29,16 +28,11 @@ class DetectorTracker:
 
         # 2. Хранилище треков с автоматической очисткой зависимых кэшей
         self.tracks = TrackRegistry(max_ids=cfg_ident.max_tracked_ids)
-        
-        # 3. Менеджер личностей (ReID + Stitching)
-        gallery_cfg = config.settings.tracker.gallery
-        self.identity_manager = IdentityManager(gallery_cfg, self.tracks)
 
         # Привязываем очистку кэшей к эвикции трека
         self.tracks.add_on_evict_callback(self.role_classifier.remove_track_data)
-        self.tracks.add_on_evict_callback(self.identity_manager.remove_track)
 
-        # 4. Процессор треков (бизнес-логика)
+        # 3. Процессор треков (бизнес-логика)
         self.track_processor = TrackProcessor(
             camera_id=self.camera_id,
             zone_manager=self.zone_manager,
@@ -50,7 +44,7 @@ class DetectorTracker:
         self._frame_count = 0
         self.fps = 25.0
         self.data_logger = None
-        logger.info("DetectorTracker инициализирован с использованием TrackRegistry и IdentityManager.")
+        logger.info("DetectorTracker инициализирован с использованием TrackRegistry.")
 
     def process_frame(self, frame, frame_id, timestamp=None, roi=None, staff_zones=None):
         """Основной цикл обработки одного кадра."""
@@ -103,9 +97,6 @@ class DetectorTracker:
         if tracked_objects is None:
             tracked_objects = np.zeros((0, 8), dtype=np.float64)
 
-        # Re-ID / stitcher должны вызываться и на пустых кадрах (пропажа треков → dead_pool)
-        self.identity_manager.update(tracked_objects, self.tracking_service.tracker)
-
         if tracked_objects.shape[0] == 0:
             return [], set()
 
@@ -118,10 +109,6 @@ class DetectorTracker:
             )
             
             if det:
-                # Накладываем финальную личность (стабильный ID из ReID)
-                identity_meta = self.identity_manager.get_identity_metadata(det["track_id"])
-                det.update(identity_meta)
-                
                 detections.append(det)
                 active_ids.add(det["track_id"])
 
@@ -170,10 +157,6 @@ class DetectorTracker:
     def _finalize_step(self):
         """Очистка ресурсов и инкремент счетчиков после каждого кадра."""
         self._frame_count += 1
-        
-        # Периодическая очистка кэша ReID (каждые 10 кадров)
-        if self.identity_manager.enabled and self._frame_count % 10 == 0:
-            self.identity_manager.gallery.cleanup()
 
         # Примечание: Эвикция старых PersonData теперь происходит 
         # автоматически внутри TrackRegistry (self.tracks) при каждом добавлении.

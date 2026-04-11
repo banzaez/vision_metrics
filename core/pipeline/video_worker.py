@@ -9,11 +9,10 @@ os.environ["OPENCV_VIDEOIO_LOG_LEVEL"] = "0"
 
 from PyQt6.QtCore import QObject, pyqtSignal
 import config
-from core.pipeline.orchestrator import DetectorTracker
-from core.analytics.data_logger import JSONDataLogger
+from core.pipeline.factory import PipelineFactory
 from utils.visualizer import Visualizer
 from utils.filename_parser import parse_nvr_filename
-from utils.monitor import ResourceMonitor
+from core.analytics.monitor import ResourceMonitor
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +31,6 @@ class VideoWorker(QObject):
     stats_updated = pyqtSignal(list)  # Отправляет список текущих детекций
     json_data_ready = pyqtSignal(int, list) # Отправляет сырые словари для JSON просмотра
     performance_updated = pyqtSignal(dict)  # Отправляет метрики CPU/RAM/FPS
-    reid_stitched = pyqtSignal(dict)  # Отправляет данные о склейке ID
     position_changed = pyqtSignal(int)  # Текущий кадр
     duration_ready = pyqtSignal(int)  # Общее кол-во кадров
     error_occurred = pyqtSignal(str)  # Критическая ошибка
@@ -56,7 +54,6 @@ class VideoWorker(QObject):
 
         self.frame_count = 0
         self.last_detections = []
-        self._processed_stitches = set() # { (original_id, canonical_id) }
         self.data_logger = None  # Инициализируется в run()
         
         # Инфо о видео для экспорта
@@ -75,75 +72,11 @@ class VideoWorker(QObject):
         self.max_speed_mode = enabled
         logger.info(f"Режим Max Speed установлен в: {enabled}")
 
-    def _emit_reid_ui_events(self, detections, frame_count):
-        """События для панели Re-ID: склейки, near-miss, периодический снимок галереи."""
-        detector = self.detector
-        if detector is None:
-            return
-        im = detector.identity_manager
-        if not im.enabled:
-            return
-
-        gallery_cfg = config.settings.tracker.gallery
-        thr = gallery_cfg.similarity_threshold
-        spw = gallery_cfg.spatial_penalty_weight
-
-        for det in detections or []:
-            if det.get("is_stitched"):
-                orig = det.get("original_id")
-                canon = det.get("track_id")
-                stitch_key = (orig, canon)
-                if stitch_key not in self._processed_stitches:
-                    self._processed_stitches.add(stitch_key)
-                    self.reid_stitched.emit({
-                        "status": "SUCCESS",
-                        "canonical_id": canon,
-                        "tracker_id": orig,
-                        "old_id": canon,
-                        "new_id": orig,
-                        "stitch_score": det.get("stitch_score", 0.0),
-                        "reid_status": det.get("reid_status", "SUCCESS"),
-                        "similarity_threshold": thr,
-                        "spatial_penalty_weight": spw,
-                        "frame_id": frame_count,
-                        "type": det.get("type", "person"),
-                        "conf": det.get("conf"),
-                        "camera_id": det.get("camera_id"),
-                        "bbox": det.get("bbox"),
-                    })
-            elif det.get("is_near_miss") and frame_count % 30 == 0:
-                self.reid_stitched.emit({
-                    "status": "REJECTED",
-                    "potential_old_id": det.get("potential_old_id"),
-                    "tracker_id": det.get("track_id"),
-                    "old_id": det.get("potential_old_id"),
-                    "new_id": det.get("track_id"),
-                    "stitch_score": det.get("stitch_score", 0.0),
-                    "reid_status": det.get("reid_status", "REJECTED"),
-                    "similarity_threshold": thr,
-                    "spatial_penalty_weight": spw,
-                    "frame_id": frame_count,
-                    "type": det.get("type", "person"),
-                    "conf": det.get("conf"),
-                    "camera_id": det.get("camera_id"),
-                    "bbox": det.get("bbox"),
-                })
-
-        if frame_count % 50 == 0:
-            stats = im.get_gallery_stats()
-            stats["status"] = "GALLERY_UPDATE"
-            stats["similarity_threshold"] = thr
-            stats["spatial_penalty_weight"] = spw
-            self.reid_stitched.emit(stats)
-
     def run(self):
         """
         Основной цикл обработки видео.
         Читает кадры, проводит инференс, собирает статистику и отправляет в UI.
         """
-        # Инициализация процессора JSON (путь будет задан ниже, когда узнаем имя файла)
-        self.data_logger = JSONDataLogger(output_path="")
-
         cfg_sys = config.settings.system
         source = cfg_sys.video_sources[self.source_index]
         is_stream = not (isinstance(source, str) and os.path.isfile(source))
@@ -178,16 +111,13 @@ class VideoWorker(QObject):
 
         # 2. Теперь инициализируем тяжелые компоненты, когда знаем реальный FPS
         try:
-            cfg_yolo = config.settings.yolo
-            cfg_perf = config.settings.system.perf
-
-            # Инициализируем оркестратор (теперь с правильным FPS)
-            self.detector = DetectorTracker(
-                model_path=cfg_yolo.weights,
-                camera_id=config.settings.analytics.camera_id,
-                device=cfg_perf.device,
-                half=cfg_perf.half,
-            )
+            # Используем фабрику для создания detector и data_logger
+            self.detector, nvr_meta = PipelineFactory.create_detector_tracker(source)
+            self.data_logger, video_meta = PipelineFactory.create_data_logger(source)
+            
+            self.video_metadata = video_meta
+            self.video_metadata.update(nvr_meta)
+            
             self.visualizer = Visualizer()
         except Exception as e:
             msg = f"Ошибка инициализации систем анализа: {e}"
@@ -197,40 +127,15 @@ class VideoWorker(QObject):
             self.finished.emit()
             return
 
-        filename = os.path.basename(source) if not is_stream else "stream"
-        # nvr_meta определяется по имени файла
-        nvr_meta = parse_nvr_filename(filename) if not is_stream else {}
-        camera_id = nvr_meta.get("camera_id", "stream")
-
-        self.video_metadata.update({
-            "camera_id": camera_id,
-            "filename": filename,
-            "fps": float(fps) if fps > 0 else 25.0,
-            "width": width,
-            "height": height,
-            "total_frames": total_frames
-        })
-        self.video_metadata.update(nvr_meta)
-
-        # Настройка логгера (вся логика путей теперь внутри!)
-        self.data_logger.setup_from_video(source)
-
-        # Открываем логгер с актуальными метаданными
-        self.data_logger.metadata = self.video_metadata
-        self.data_logger.open()
-
         # Настраиваем оркестратор (унифицированная логика)
         if self.detector:
-            self.detector.camera_id = camera_id
-            self.detector.fps = self.video_metadata["fps"]
             self.detector.data_logger = self.data_logger
-            if hasattr(self.detector, 'track_processor'):
-                self.detector.track_processor.camera_id = camera_id
+            PipelineFactory.configure_detector(self.detector, self.video_metadata["fps"])
 
         if total_frames > 0:
             self.duration_ready.emit(total_frames)
             self._fps_cache = fps if fps > 0 else 25.0
-            logger.info(f"Видеофайл: {camera_id} | {total_frames} кадров, {fps} FPS")
+            logger.info(f"Видеофайл: {self.video_metadata['camera_id']} | {total_frames} кадров, {fps} FPS")
         else:
             self._fps_cache = 25.0  # Дефолт для стримов
 
@@ -290,7 +195,6 @@ class VideoWorker(QObject):
                     
                     if detections:
                         self.json_data_ready.emit(self.frame_count, detections)
-                    self._emit_reid_ui_events(detections, self.frame_count)
 
                 else:
                     # Пакетный режим
@@ -314,7 +218,6 @@ class VideoWorker(QObject):
                         
                         if detections:
                             self.json_data_ready.emit(self.frame_count, detections)
-                        self._emit_reid_ui_events(detections, self.frame_count)
                     else:
                         detections = self.last_detections
             else:

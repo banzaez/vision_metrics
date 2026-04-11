@@ -99,7 +99,7 @@ class TrackingService:
 
     @staticmethod
     def _normalize_tracker_output(out):
-        """Приводит вывод BoxMOT к 2D ndarray для stitcher / циклов."""
+        """Приводит вывод BoxMOT к 2D ndarray для циклов по трекам."""
         if out is None:
             return np.zeros((0, 8), dtype=np.float64)
         arr = np.asarray(out, dtype=np.float64)
