@@ -2,7 +2,6 @@ import argparse
 import sys
 import os
 import logging
-import time
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -165,8 +164,6 @@ def main():
     setup_logging(args.verbose)
     logger = logging.getLogger("CLI")
     
-    start_time = time.time()
-    
     # Конфигурация
     from config.trackers.base import TrackerType
     import config
@@ -191,29 +188,17 @@ def main():
     print_start_info(logger, args, config)
     logger.info(f"🚀 Запуск Vision Metrics - Обработка: {os.path.basename(args.source)}")
     
-    # Переменные для статистики
-    total_frames = 0
-    processed_frames = 0
-    staff_count = 0
-    client_count = 0
-    
     # Настройка tqdm
     pbar: list = [None]
     try:
         from tqdm import tqdm
         
         def on_duration(total):
-            nonlocal total_frames
-            total_frames = total
             pbar[0] = tqdm(total=total, desc="Processing", unit="fr", colour="green")
             
         def on_progress(frame_id):
-            nonlocal processed_frames
-            processed_frames = frame_id
             if pbar[0]:
                 pbar[0].n = frame_id
-                progress = (frame_id / total_frames * 100) if total_frames > 0 else 0
-                pbar[0].set_postfix_str(f"{progress:.1f}%")
                 pbar[0].refresh()
                 
         def on_performance(stats):
@@ -221,30 +206,20 @@ def main():
                 fps = stats.get('fps', 0)
                 ram = stats.get('ram_gb', 0)
                 pbar[0].set_postfix_str(f"{fps:.1f} FPS | RAM: {ram:.1f}GB")
-        
-        def on_stats(detections):
-            nonlocal staff_count, client_count
-            # Считаем уникальные ID для итоговой статистики
-            for d in detections:
-                if d.get('role') == 'staff':
-                    staff_count = max(staff_count, d.get('track_id', 0))
-                else:
-                    client_count = max(client_count, d.get('track_id', 0))
 
         callbacks = {
             'on_duration': on_duration,
             'on_progress': on_progress,
-            'on_performance': on_performance,
-            'on_stats': on_stats
+            'on_performance': on_performance
         }
     except ImportError:
         logger.warning("Библиотека tqdm не найдена. Используется упрощенный вывод.")
         def on_progress_simple(frame_id):
-            nonlocal processed_frames
-            processed_frames = frame_id
             if frame_id % 100 == 0:
                 print(f" >>> Кадр: {frame_id}", flush=True)
         callbacks = {'on_progress': on_progress_simple}
+
+
     
     from core.pipeline.headless_executor import HeadlessExecutor
     executor = HeadlessExecutor(
@@ -262,23 +237,13 @@ def main():
     try:
         success = executor.run()
         
-        elapsed_time = time.time() - start_time
-        
         if success:
             logger.info("✅ Обработка успешно завершена!")
-            
-            stats = {
-                'total_frames': total_frames,
-                'processed_frames': processed_frames,
-                'staff_count': staff_count,
-                'client_count': client_count,
-                'avg_fps': processed_frames / elapsed_time if elapsed_time > 0 else 0,
-                'total_time': elapsed_time
-            }
-            
+            stats = executor.get_summary()
             print_summary(stats)
         else:
             logger.error("❌ Обработка прервана из-за ошибки.")
+
             
     except KeyboardInterrupt:
         logger.warning("\n⚠️ Остановка пользователем (Ctrl+C)...")

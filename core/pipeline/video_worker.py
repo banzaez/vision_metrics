@@ -26,6 +26,7 @@ class VideoWorker(QObject):
     performance_updated = pyqtSignal(dict)  # Отправляет метрики CPU/RAM/FPS
     position_changed = pyqtSignal(int)  # Текущий кадр
     duration_ready = pyqtSignal(int)  # Общее кол-во кадров
+    metadata_ready = pyqtSignal(dict) # Метаданные видео (FPS, разрешение и т.д.)
     error_occurred = pyqtSignal(str)  # Критическая ошибка
     finished = pyqtSignal()  # Сигнал о завершении работы
 
@@ -55,25 +56,24 @@ class VideoWorker(QObject):
         cfg_sys = config.settings.system
         source = cfg_sys.video_sources[self.source_index]
 
+        def on_stats_combined(detections):
+            if detections:
+                self.stats_updated.emit(detections)
+                if self.executor:
+                    self.json_data_ready.emit(self.executor.frame_count, detections)
+
         # Настройка коллбэков (мапим на сигналы PyQt)
         callbacks = {
-            'on_stats': self.stats_updated.emit,
             'on_progress': self.position_changed.emit,
             'on_performance': self.performance_updated.emit,
-            'on_duration': self.duration_ready.emit
+            'on_duration': self.duration_ready.emit,
+            'on_meta': self.metadata_ready.emit,
+            'on_stats': on_stats_combined
         }
+
         
         if not self.max_speed_mode:
             callbacks['on_frame'] = self.frame_ready.emit
-
-        # Дополнительный коллбэк для JSON инспектора
-        def on_stats_ext(detections):
-            self.stats_updated.emit(detections)
-            if detections and self.executor:
-                self.json_data_ready.emit(self.executor.frame_count, detections)
-        
-        callbacks['on_stats'] = on_stats_ext
-
 
         self.executor = HeadlessExecutor(
             source_path=source,
@@ -81,6 +81,7 @@ class VideoWorker(QObject):
             callbacks=callbacks,
             realtime=not self.max_speed_mode
         )
+
 
         try:
             success = self.executor.run()
