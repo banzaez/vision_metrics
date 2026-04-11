@@ -65,6 +65,11 @@ class Visualizer:
             
             # Подложка под текст и сам текст (ID и тип)
             label_text = f"ID:{track_id} {ptype}"
+            
+            # Если трек склеен - добавляем метку [S] (Stitched)
+            if det.get("is_stitched"):
+                label_text += " [S]"
+                
             (tw, th), baseline = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, max(1, thickness-1))
             
             # Смещаем подложку вверх пропорционально шрифту

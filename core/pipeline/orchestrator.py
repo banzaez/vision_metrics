@@ -112,7 +112,12 @@ class DetectorTracker:
             if det:
                 # Применяем алиас ID если трек был склеен
                 if self.reid_gallery:
-                    det["track_id"] = self.reid_gallery.apply_alias(det["track_id"])
+                    orig_id = det["track_id"]
+                    canonical_id = self.reid_gallery.apply_alias(orig_id)
+                    if canonical_id != orig_id:
+                        det["track_id"] = canonical_id
+                        det["is_stitched"] = True
+                        det["original_id"] = orig_id
                 
                 detections.append(det)
                 active_ids.add(det["track_id"])

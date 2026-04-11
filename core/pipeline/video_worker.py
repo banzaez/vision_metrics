@@ -32,6 +32,7 @@ class VideoWorker(QObject):
     stats_updated = pyqtSignal(list)  # Отправляет список текущих детекций
     json_data_ready = pyqtSignal(int, list) # Отправляет сырые словари для JSON просмотра
     performance_updated = pyqtSignal(dict)  # Отправляет метрики CPU/RAM/FPS
+    reid_stitched = pyqtSignal(dict)  # Отправляет данные о склейке ID
     position_changed = pyqtSignal(int)  # Текущий кадр
     duration_ready = pyqtSignal(int)  # Общее кол-во кадров
     error_occurred = pyqtSignal(str)  # Критическая ошибка
@@ -55,6 +56,7 @@ class VideoWorker(QObject):
 
         self.frame_count = 0
         self.last_detections = []
+        self._processed_stitches = set() # { (original_id, canonical_id) }
         self.data_logger = None  # Инициализируется в run()
         
         # Инфо о видео для экспорта
@@ -227,6 +229,17 @@ class VideoWorker(QObject):
                     
                     if detections:
                         self.json_data_ready.emit(self.frame_count, detections)
+                        
+                        # Проверка на новые события склейки Re-ID
+                        for det in detections:
+                            if det.get("is_stitched"):
+                                stitch_key = (det["original_id"], det["track_id"])
+                                if stitch_key not in self._processed_stitches:
+                                    self._processed_stitches.add(stitch_key)
+                                    self.reid_stitched.emit({
+                                        "old_id": det["track_id"],
+                                        "new_id": det["original_id"]
+                                    })
                         
                 else:
                     # Пакетный режим

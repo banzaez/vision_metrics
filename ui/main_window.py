@@ -15,6 +15,7 @@ from ui.video_controls import VideoControlPanel
 from ui.resource_monitor import ResourceMonitorWidget
 from ui.engine_status import EngineStatusWidget
 from ui.json_inspector import JsonInspectorWidget
+from ui.reid_panel import ReIDStitchPanel
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +99,10 @@ class MainWindow(QMainWindow):
         self.stats_panel = StatsPanel()
         self.side_layout.addWidget(self.stats_panel)
 
+        # Компонент лога Re-ID (склейки)
+        self.reid_panel = ReIDStitchPanel()
+        self.side_layout.addWidget(self.reid_panel)
+
         self.main_layout.addWidget(self.side_panel, 3)
 
         # Восстановление настроек окна
@@ -109,6 +114,7 @@ class MainWindow(QMainWindow):
         self.video_worker.stats_updated.connect(self.stats_panel.update_stats, Qt.ConnectionType.QueuedConnection)
         self.video_worker.json_data_ready.connect(self.json_inspector.update_json, Qt.ConnectionType.QueuedConnection)
         self.video_worker.performance_updated.connect(self.perf_monitor.update_metrics, Qt.ConnectionType.QueuedConnection)
+        self.video_worker.reid_stitched.connect(self.reid_panel.add_event, Qt.ConnectionType.QueuedConnection)
         self.video_worker.error_occurred.connect(self.show_error, Qt.ConnectionType.QueuedConnection)
         
         # Настройка горячих клавиш через QShortcut (работают независимо от фокуса)

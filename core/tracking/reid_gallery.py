@@ -183,6 +183,10 @@ class ReIDGallery:
 
                 # Порог проверяем ПОСЛЕ учета всех штрафов
                 if score < self.cfg.similarity_threshold:
+                    logger.debug(
+                        f"[ReIDGallery] Отклонено: new_id={new_id} vs old_id={old_id}. "
+                        f"Score {score:.3f} < Threshold {self.cfg.similarity_threshold}"
+                    )
                     continue
 
                 if score > best_score:
@@ -223,9 +227,10 @@ class ReIDGallery:
             return current
     
     def cleanup(self) -> None:
-        """Удалить устаревшие записи из dead_pool."""
+        """Удалить устаревшие записи из dead_pool и очистить alias_map."""
         now = time.time()
         with self.lock:
+            # 1. Очистка мёртвого пула
             expired = [
                 tid for tid, data in self._dead_pool.items()
                 if (now - data["ts"]) > self.cfg.max_age_seconds
@@ -233,8 +238,29 @@ class ReIDGallery:
             for tid in expired:
                 del self._dead_pool[tid]
                 self._reversed_map.pop(tid, None)
-            if expired:
-                logger.debug(f"[ReIDGallery] Очистка: удалено {len(expired)} устаревших записей")
+
+            # 2. Очистка alias_map
+            # Удаляем старые алиасы, которые ведут к ID, которых больше нет в памяти ReID.
+            # Если мы забыли эмбеддинг ID, мы всё равно не сможем к нему больше приклеиться.
+            to_delete = []
+            if self.alias_map:
+                # Множество всех "полезных" ID в системе ReID
+                known_ids = set(self._live_embeddings.keys()) | set(self._dead_pool.keys())
+                
+                for start_id in self.alias_map.keys():
+                    # canonical — это конец цепочки (старейший ID)
+                    canonical = self.apply_alias(start_id)
+                    if canonical not in known_ids:
+                        to_delete.append(start_id)
+                
+                for tid in to_delete:
+                    self.alias_map.pop(tid, None)
+
+            if expired or to_delete:
+                logger.debug(
+                    f"[ReIDGallery] Очистка: удалено {len(expired)} эмбеддингов, "
+                    f"{len(to_delete)} алиасов"
+                )
 
     def remove_track(self, track_id: int) -> None:
         """

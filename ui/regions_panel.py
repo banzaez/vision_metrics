@@ -3,7 +3,7 @@ import json
 import os
 import config
 import threading
-from PyQt6.QtWidgets import (QVBoxLayout, QPushButton, QListWidget, 
+from PyQt6.QtWidgets import (QVBoxLayout, QGridLayout, QPushButton, QListWidget, 
                              QLabel, QGroupBox, QMessageBox)
 from PyQt6.QtCore import QObject, pyqtSignal
 
@@ -37,35 +37,40 @@ class RegionsPanel(QGroupBox):
     рабочих зон (ROI), зон для персонала и аналитических KPI зон.
     """
     def __init__(self, video_worker, parent=None):
-        super().__init__("Regions & Zones Manager", parent)
+        super().__init__("Regions & Zones", parent)
         self.video_worker = video_worker
         self.last_cv_frame = None
 
-        self.layout = QVBoxLayout(self)
+        self.layout = QGridLayout(self)
+        self.layout.setSpacing(4)
+        self.layout.setContentsMargins(5, 5, 5, 5)
         
-        # Кнопки добавления зон
-        self.btn_roi = QPushButton("Set/Edit ROI")
-        self.btn_staff = QPushButton("+ Add Staff Zone")
-        self.btn_clear = QPushButton("Clear All Regions")
+        # Кнопки (делаем их компактнее)
+        self.btn_roi = QPushButton("Set ROI")
+        self.btn_staff = QPushButton("+ Staff")
+        self.btn_del_selected = QPushButton("Del")
+        self.btn_del_selected.setStyleSheet("background-color: #442222;")
+        self.btn_clear = QPushButton("Clear All")
         
         # Список текущих зон
         self.zones_list = QListWidget()
-        self.btn_del_selected = QPushButton("Delete Selected Zone")
-        self.btn_del_selected.setStyleSheet("background-color: #442222;")
+        self.zones_list.setMaximumHeight(110) # Увеличиваем список для наглядности
+        
+        # Сетка: Row, Col, RowSpan, ColSpan
+        self.layout.addWidget(self.btn_roi, 0, 0)
+        self.layout.addWidget(self.btn_staff, 0, 1)
+        self.layout.addWidget(self.zones_list, 1, 0, 1, 2)
+        self.layout.addWidget(self.btn_del_selected, 2, 0)
+        self.layout.addWidget(self.btn_clear, 2, 1)
+        
+        # Ограничиваем общую высоту всей панели (даем больше места)
+        self.setMaximumHeight(200)
 
         # Подключение обработчиков
         self.btn_roi.clicked.connect(self.select_roi)
         self.btn_staff.clicked.connect(self.add_staff_zone)
         self.btn_clear.clicked.connect(self.clear_all)
         self.btn_del_selected.clicked.connect(self.delete_selected_zone)
-        
-        # Добавление виджетов на панель
-        self.layout.addWidget(self.btn_roi)
-        self.layout.addWidget(self.btn_staff)
-        self.layout.addWidget(QLabel("Current Zones:"))
-        self.layout.addWidget(self.zones_list)
-        self.layout.addWidget(self.btn_del_selected)
-        self.layout.addWidget(self.btn_clear)
         
         # Первичное обновление списка зон
         self.update_zones_list()
