@@ -126,6 +126,17 @@ class TrackerRegistry:
 
 
 @dataclass
+class CustomReIDConfig:
+    """Конфигурация кастомного алгоритма сшивки треков."""
+    enabled: bool = True
+    """Включение/выключение кастомной сшивки."""
+    threshold: float = 0.7
+    """Порог уверенности для принятия решения о сшивке (0.0 - 1.0)."""
+    gallery_size: int = 100
+    """Максимальное количество треков, хранимых в галерее для сшивки."""
+
+
+@dataclass
 class TrackerConfig:
     """
     Конфигурация трекера.
@@ -143,6 +154,9 @@ class TrackerConfig:
 
     classes: List[int] = field(default_factory=lambda: [0])
     """Список классов для отслеживания ([0] для людей)."""
+
+    custom_reid: CustomReIDConfig = field(default_factory=CustomReIDConfig)
+    """Настройки кастомного алгоритма сшивки (CustomReIDStitcher)."""
 
     registry: TrackerRegistry = field(default_factory=TrackerRegistry, repr=False)
     """Внутренний реестр конфигураций трекеров."""

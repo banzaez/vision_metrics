@@ -198,6 +198,8 @@ class HeadlessExecutor:
 
     def _process_and_emit(self, frames, ids, cfg_analytics):
         detections = []
+        start_proc = time.perf_counter()
+        
         if self.batch_size > 1:
             batch_results = self.detector.process_batch(frames, frame_ids=ids,
                                                       roi=cfg_analytics.roi,
@@ -213,6 +215,10 @@ class HeadlessExecutor:
                                                        staff_zones=cfg_analytics.staff_zones)
             self._update_stats(detections)
         
+        # Обновляем мониторинг прикладными метриками
+        proc_ms = (time.perf_counter() - start_proc) * 1000
+        self.monitor.update(inference_ms=proc_ms)
+
         if 'on_stats' in self.callbacks:
             self.callbacks['on_stats'](detections)
         return detections

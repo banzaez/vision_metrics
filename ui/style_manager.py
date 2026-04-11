@@ -219,8 +219,20 @@ class StyleManager:
             color: {TEXT_PRIMARY};
             font-size: 12px;
         }}
-        #title {{ font-weight: 600; color: {TEXT_MUTED}; text-transform: uppercase; font-size: 10px; }}
-        #value {{ font-weight: 700; color: {TEXT_PRIMARY}; min-width: 45px; }}
+        #title {{ 
+            font-weight: 600; 
+            color: {TEXT_MUTED}; 
+            text-transform: uppercase; 
+            font-size: 10px; 
+            margin-right: 2px;
+        }}
+        #value {{ 
+            font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace;
+            font-weight: 700; 
+            color: {TEXT_PRIMARY}; 
+            min-width: 65px;
+            qproperty-alignment: 'AlignLeft | AlignVCenter';
+        }}
     """
 
     PROGRESS_BAR = f"""

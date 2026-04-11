@@ -9,6 +9,7 @@ from core.detection.yolo_detector import YOLODetector
 from core.tracking.tracking_service import TrackingService
 from core.tracking.track_processor import TrackProcessor
 from core.tracking.track_registry import TrackRegistry
+from core.tracking.reid_stitcher import CustomReIDStitcher
 from core.utils import crop_roi, filter_detections
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,16 @@ class DetectorTracker:
             tracks_storage=self.tracks,
             history_length=cfg_ident.history_length
         )
+
+        # 4. Кастомная сшивка треков по внешнему виду (CustomReIDStitcher)
+        cfg_custom = config.settings.tracker.custom_reid
+        self.reid_stitcher = CustomReIDStitcher(
+            threshold=cfg_custom.threshold,
+            gallery_size=cfg_custom.gallery_size
+        )
+        # Пробрасываем ReID модель из основного трекера (если она там есть)
+        if hasattr(self.tracking_service.tracker, 'model'):
+            self.reid_stitcher.model = self.tracking_service.tracker.model
 
         self._frame_count = 0
         self.fps = 25.0
@@ -115,6 +126,10 @@ class DetectorTracker:
         tracked_objects = self.tracking_service.update(boxes, confs, cls, input_frame)
         if tracked_objects is None:
             tracked_objects = np.zeros((0, 8), dtype=np.float64)
+
+        # Кастомная сшивка треков (если включена в конфиге)
+        if tracked_objects.shape[0] > 0 and config.settings.tracker.custom_reid.enabled:
+            tracked_objects = self.reid_stitcher.process(tracked_objects, input_frame)
 
         if tracked_objects.shape[0] == 0:
             return [], set()
