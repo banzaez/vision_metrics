@@ -34,19 +34,32 @@ class StatsPanel(QGroupBox):
         Обновляет таблицу на основе списка детекций.
         Сортировка: STAFF -> CLIENT -> RAW.
         """
-        def get_priority(det):
+        # Group by priority to avoid sorting every frame
+        priority_groups = {
+            0: [],  # STAFF
+            1: [],  # CLIENT
+            2: [],  # RAW/other
+        }
+
+        for det in detections:
             tp = det.get("type", "").upper()
             if tp == "STAFF":
-                return 0
-            if tp == "CLIENT":
-                return 1
-            return 2
+                priority = 0
+            elif tp == "CLIENT":
+                priority = 1
+            else:
+                priority = 2
+            priority_groups[priority].append(det)
 
-        sorted_detections = sorted(detections, key=get_priority)
-        self.table.setRowCount(len(sorted_detections))
+        # Flatten in priority order without creating a new sorted list
+        ordered_detections = (
+            det for priority in [0, 1, 2] for det in priority_groups[priority]
+        )
 
-        for row, det in enumerate(sorted_detections):
-            tid_val = det.get('track_id', '?')
+        self.table.setRowCount(len(detections))
+
+        for row, det in enumerate(ordered_detections):
+            tid_val = det.get("track_id", "?")
             tid = f"#{tid_val}"
 
             dtype = det.get("type", "person").upper()
