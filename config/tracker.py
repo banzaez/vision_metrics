@@ -2,7 +2,7 @@ from config.trackers.base import ReIDModel
 from dataclasses import dataclass, field
 from typing import List
 from config.trackers.base import TrackerType, BaseTrackerParams
-from config.trackers.reid_custom import ReIDCustomConfig
+from config.reid_custom import ReIDCustomConfig
 
 
 # ─────────────────────────────────────────────────────────────────────────────

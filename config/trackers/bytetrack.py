@@ -30,25 +30,3 @@ class ByteTrackConfig:
 
     # Режим детекций
     per_class: bool = False  # Независимый трекинг для каждого класса
-
-    def __post_init__(self):
-        if not (0.0 <= self.det_thresh <= 1.0):
-            raise ValueError(f"det_thresh must be in [0.0, 1.0], got {self.det_thresh}")
-        if self.max_age < 1:
-            raise ValueError(f"max_age must be >= 1, got {self.max_age}")
-        if self.max_obs < 1:
-            raise ValueError(f"max_obs must be >= 1, got {self.max_obs}")
-        if self.min_hits < 1:
-            raise ValueError(f"min_hits must be >= 1, got {self.min_hits}")
-        if not (0.0 <= self.iou_threshold <= 1.0):
-            raise ValueError(f"iou_threshold must be in [0.0, 1.0], got {self.iou_threshold}")
-        if not (0.0 <= self.min_conf <= 1.0):
-            raise ValueError(f"min_conf must be in [0.0, 1.0], got {self.min_conf}")
-        if not (0.0 <= self.track_thresh <= 1.0):
-            raise ValueError(f"track_thresh must be in [0.0, 1.0], got {self.track_thresh}")
-        if not (0.0 <= self.match_thresh <= 1.0):
-            raise ValueError(f"match_thresh must be in [0.0, 1.0], got {self.match_thresh}")
-        if self.track_buffer < 1:
-            raise ValueError(f"track_buffer must be >= 1, got {self.track_buffer}")
-        if self.asso_func not in ["iou", "reid"]:
-            raise ValueError(f"asso_func must be 'iou' or 'reid', got {self.asso_func}")

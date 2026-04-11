@@ -50,39 +50,3 @@ class HybridSortConfig:
     adapfs: bool = False                 # Адаптивный выбор признаков (Adaptive Feature Selection)
     cmc_method: str = 'sof'              # Метод компенсации движения камеры (sof быстрее чем ecc)
     dataset: str = 'custom'              # Имя набора данных (для внутренней оптимизации)
-
-    def __post_init__(self):
-        if not (0.0 <= self.track_thresh <= 1.0):
-            raise ValueError(f"track_thresh must be in [0.0, 1.0], got {self.track_thresh}")
-        if not (0.0 <= self.low_thresh <= 1.0):
-            raise ValueError(f"low_thresh must be in [0.0, 1.0], got {self.low_thresh}")
-        if self.delta_t < 1:
-            raise ValueError(f"delta_t must be >= 1, got {self.delta_t}")
-        if not (0.0 <= self.inertia <= 1.0):
-            raise ValueError(f"inertia must be in [0.0, 1.0], got {self.inertia}")
-        if not (0.0 <= self.det_thresh <= 1.0):
-            raise ValueError(f"det_thresh must be in [0.0, 1.0], got {self.det_thresh}")
-        if self.max_age < 1:
-            raise ValueError(f"max_age must be >= 1, got {self.max_age}")
-        if self.max_obs < 1:
-            raise ValueError(f"max_obs must be >= 1, got {self.max_obs}")
-        if self.min_hits < 1:
-            raise ValueError(f"min_hits must be >= 1, got {self.min_hits}")
-        if not (0.0 <= self.iou_threshold <= 1.0):
-            raise ValueError(f"iou_threshold must be in [0.0, 1.0], got {self.iou_threshold}")
-        if self.longterm_bank_length < 1:
-            raise ValueError(f"longterm_bank_length must be >= 1, got {self.longterm_bank_length}")
-        if not (0.0 <= self.longterm_reid_weight <= 1.0):
-            raise ValueError(f"longterm_reid_weight must be in [0.0, 1.0], got {self.longterm_reid_weight}")
-        if not (0.0 <= self.longterm_reid_correction_thresh <= 1.0):
-            raise ValueError(f"longterm_reid_correction_thresh must be in [0.0, 1.0], got {self.longterm_reid_correction_thresh}")
-        if not (0.0 <= self.longterm_reid_correction_thresh_low <= 1.0):
-            raise ValueError(f"longterm_reid_correction_thresh_low must be in [0.0, 1.0], got {self.longterm_reid_correction_thresh_low}")
-        if self.EG_weight_high_score < 0:
-            raise ValueError(f"EG_weight_high_score must be >= 0, got {self.EG_weight_high_score}")
-        if self.EG_weight_low_score < 0:
-            raise ValueError(f"EG_weight_low_score must be >= 0, got {self.EG_weight_low_score}")
-        if not (0.0 <= self.high_score_matching_thresh <= 1.0):
-            raise ValueError(f"high_score_matching_thresh must be in [0.0, 1.0], got {self.high_score_matching_thresh}")
-        if not (0.0 < self.alpha < 1.0):
-            raise ValueError(f"alpha must be in (0.0, 1.0), got {self.alpha}")

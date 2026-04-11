@@ -21,7 +21,7 @@ class ReIDCustomConfig:
     # ──────────────────────────────
 
     # [ON/OFF] Включить глобальную Re-ID галерею
-    enabled: bool = False
+    enabled: bool = True
 
     # ──────────────────────────────
     # Параметры совпадения
@@ -60,17 +60,3 @@ class ReIDCustomConfig:
     # Минимальный confidence детекции для записи эмбеддинга в галерею
     # Грязные детекции (низкий conf) ухудшают «портрет» — фильтруем их
     min_conf_for_gallery: float = 0.45
-
-    def __post_init__(self):
-        if not (0.0 <= self.similarity_threshold <= 1.0):
-            raise ValueError(f"similarity_threshold must be in [0.0, 1.0], got {self.similarity_threshold}")
-        if not (0.0 <= self.spatial_iou_weight <= 1.0):
-            raise ValueError(f"spatial_iou_weight must be in [0.0, 1.0], got {self.spatial_iou_weight}")
-        if self.max_age_seconds <= 0:
-            raise ValueError(f"max_age_seconds must be > 0, got {self.max_age_seconds}")
-        if self.max_gallery_size < 1:
-            raise ValueError(f"max_gallery_size must be >= 1, got {self.max_gallery_size}")
-        if self.embedding_history < 1:
-            raise ValueError(f"embedding_history must be >= 1, got {self.embedding_history}")
-        if not (0.0 <= self.min_conf_for_gallery <= 1.0):
-            raise ValueError(f"min_conf_for_gallery must be in [0.0, 1.0], got {self.min_conf_for_gallery}")
