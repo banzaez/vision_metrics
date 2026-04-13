@@ -20,6 +20,9 @@ settings = AppConfig(
     system=SystemConfig(
         perf=PerformanceConfig(
             # Вычислительное устройство: 'cuda', 'mps' (Apple Silicon), 'cpu'
+            # На Mac M1/M2/M3/M4 используйте 'mps'
+            # На Windows/Linux с NVIDIA картой используйте 'cuda'
+            # На Windows/Linux без NVIDIA карты используйте 'cpu'
             # Также можно использовать 'auto' для автоматического определения.
             device='auto', 
             
