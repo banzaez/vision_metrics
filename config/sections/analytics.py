@@ -66,3 +66,6 @@ class AnalyticsConfig:
 
     staff_zones: List[List[int]] = field(default_factory=list)
     """Зоны персонала (список полигонов/боксов)."""
+
+    kpi_zones: dict = field(default_factory=dict)
+    """Именованные зоны KPI для аналитики консультаций {имя: [(x1,y1), ...]}."""

@@ -11,5 +11,8 @@ class PathsConfig:
     staff_zones_file: str = 'staff_zones.json'
     """Зоны автоматического определения персонала."""
 
+    kpi_zones_file: str = 'kpi_zones.json'
+    """Именованные зоны KPI для аналитики консультаций."""
+
     window_settings_file: str = "window_settings.json"
     """Состояние и геометрия главного окна приложения."""

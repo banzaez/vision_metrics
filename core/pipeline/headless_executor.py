@@ -164,8 +164,9 @@ class HeadlessExecutor:
                 
                 if 'on_frame' in self.callbacks and frame is not None:
                     vis_frame = self.visualizer.draw(frame, self.last_detections, 
-                                                   roi=cfg_analytics.roi, 
-                                                   staff_auto_zones=cfg_analytics.staff_zones)
+                                                    roi=cfg_analytics.roi, 
+                                                    staff_auto_zones=cfg_analytics.staff_zones,
+                                                    groups=getattr(self, 'last_groups', []))
                     self.callbacks['on_frame'](vis_frame)
 
                 if self.frame_count % 30 == 0 and 'on_performance' in self.callbacks:
@@ -204,17 +205,18 @@ class HeadlessExecutor:
         
         if self.batch_size > 1:
             batch_results = self.detector.process_batch(frames, frame_ids=ids,
-                                                      roi=cfg_analytics.roi,
-                                                      staff_zones=cfg_analytics.staff_zones)
-            if batch_results:
-                # Учитываем статистику для всех кадров батча
-                for d_list, _ in batch_results:
-                    self._update_stats(d_list)
-                detections, _ = batch_results[-1]
-        else:
-            detections, _ = self.detector.process_frame(frames[0], frame_id=ids[0],
                                                        roi=cfg_analytics.roi,
                                                        staff_zones=cfg_analytics.staff_zones)
+            if batch_results:
+                # Учитываем статистику для всех кадров батча
+                for d_list, _, _ in batch_results:
+                    self._update_stats(d_list)
+                detections, _, groups = batch_results[-1]
+        else:
+            detections, _, groups = self.detector.process_frame(frames[0], frame_id=ids[0],
+                                                              roi=cfg_analytics.roi,
+                                                              staff_zones=cfg_analytics.staff_zones,
+                                                              kpi_zones=cfg_analytics.kpi_zones)
             self._update_stats(detections)
         
         # Обновляем мониторинг прикладными метриками
@@ -223,6 +225,9 @@ class HeadlessExecutor:
 
         if 'on_stats' in self.callbacks:
             self.callbacks['on_stats'](detections)
+
+        # Сохраняем группы для визуализации
+        self.last_groups = groups
         return detections
 
     def _update_stats(self, detections):

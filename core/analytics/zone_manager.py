@@ -1,12 +1,16 @@
 import numpy as np
+import cv2
 
 class ZoneManager:
-    """Управление масками и зонами персонала."""
+    """Управление масками персонала и именованными зонами KPI."""
     def __init__(self):
         self._staff_mask = None
         self._staff_zones_cache = None
         self._staff_mask_shape = (0, 0)
-    
+        
+        # Именованные зоны для KPI (полигоны)
+        self._kpi_zones = {} # {name: np.array(points, dtype=np.int32)}
+
     def update_staff_mask(self, staff_zones, frame_shape):
         h, w = frame_shape[:2]
         
@@ -29,6 +33,23 @@ class ZoneManager:
                 
         self._staff_zones_cache = staff_zones.copy() if staff_zones else []
         self._staff_mask_shape = (h, w)
+
+    def update_kpi_zones(self, zones_dict):
+        """Обновляет словарь именованных зон (полигонов)."""
+        self._kpi_zones = {}
+        for name, points in zones_dict.items():
+            if points:
+                # Преобразуем в numpy массив для cv2.pointPolygonTest
+                self._kpi_zones[name] = np.array(points, dtype=np.int32)
+
+    def get_zone_name(self, cx, cy):
+        """Возвращает имя зоны, в которой находится точка (cx, cy)."""
+        for name, polygon in self._kpi_zones.items():
+            # cv2.pointPolygonTest возвращает:
+            # +1 если внутри, 0 если на границе, -1 если снаружи
+            if cv2.pointPolygonTest(polygon, (float(cx), float(cy)), False) >= 0:
+                return name
+        return None
 
     def is_in_staff_zone(self, cx, cy):
         if self._staff_mask is not None:

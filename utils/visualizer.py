@@ -24,6 +24,7 @@ class Visualizer:
             "staff_auto": (255, 0, 255),  # Фиолетовый
             "text": (255, 255, 255),  # Белый
             "bg": (30, 30, 30),  # Темно-серый
+            "group": (19, 69, 139),  # Коричневый (SaddleBrown)
         }
         self._zones_pts = {}
 
@@ -36,7 +37,7 @@ class Visualizer:
         """Получить состояние опции отрисовки."""
         return self._draw_options.get(key, True)
 
-    def draw(self, frame, detections, roi=None, staff_auto_zones=None):
+    def draw(self, frame, detections, roi=None, staff_auto_zones=None, groups=None):
         """
         Отрисовывает все элементы на кадре.
 
@@ -51,6 +52,21 @@ class Visualizer:
         font_scale = 0.5 * scale
 
         frame = frame.copy()
+
+        # 1. Отрисовка групповых рамок (коричневых)
+        if groups:
+            for group in groups:
+                gx1, gy1, gx2, gy2 = group.bbox
+                # Рисуем пунктирную или жирную рамку для группы
+                cv2.rectangle(frame, (gx1, gy1), (gx2, gy2), self.colors["group"], thickness + 2)
+                
+                # Подпись группы
+                group_label = f"GROUP ({len(group.track_ids)} pers)"
+                cv2.putText(
+                    frame, group_label, (gx1, gy1 - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.8,
+                    self.colors["group"], thickness
+                )
 
         if self._draw_options["staff_zones"] and staff_auto_zones:
             for sz in staff_auto_zones:

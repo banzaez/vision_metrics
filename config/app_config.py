@@ -9,6 +9,7 @@ from .sections.yolo import YOLOParams
 from .sections.tracker import TrackerConfig
 from .sections.paths import PathsConfig
 from .sections.analytics import AnalyticsConfig
+from .sections.events import EventsParams
 from .events import ConfigBus, ConfigChangeEvent
 from .loader import ConfigLoader
 
@@ -42,6 +43,7 @@ class AppConfig:
     tracker: TrackerConfig = field(default_factory=TrackerConfig)
     paths: PathsConfig = field(default_factory=PathsConfig)
     analytics: AnalyticsConfig = field(default_factory=AnalyticsConfig)
+    events: EventsParams = field(default_factory=EventsParams)
 
     # ─── Public API ──────────────────────────────────────────────────────
 
@@ -193,6 +195,7 @@ class AppConfig:
         """Загрузка динамических настроек из JSON файлов (ROI, зоны)."""
         self._load_json_file(self.paths.roi_file, "analytics.roi")
         self._load_json_file(self.paths.staff_zones_file, "analytics.staff_zones")
+        self._load_json_file(self.paths.kpi_zones_file, "analytics.kpi_zones")
 
     def _load_json_file(self, filepath: str, target_path: str) -> None:
         """Загрузить значение из JSON файла по указанному пути."""

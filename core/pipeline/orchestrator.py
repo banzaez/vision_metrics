@@ -5,6 +5,7 @@ import config
 
 from core.analytics.role_classifier import RoleClassifier
 from core.analytics.zone_manager import ZoneManager
+from core.analytics.event_analyzer import EventAnalyzer
 from core.detection.yolo_detector import YOLODetector
 from core.tracking.tracking_service import TrackingService
 from core.tracking.track_processor import TrackProcessor
@@ -55,14 +56,19 @@ class DetectorTracker:
         if hasattr(self.tracking_service.tracker, 'model'):
             self.reid_stitcher.model = self.tracking_service.tracker.model
 
+        # 5. Анализатор событий (proximity и др.)
+        self.event_analyzer = EventAnalyzer(config=config.settings.events)
+
         self._frame_count = 0
         self.fps = 25.0
         self.data_logger = None
         logger.info("DetectorTracker инициализирован с использованием TrackRegistry.")
 
-    def process_frame(self, frame, frame_id, timestamp=None, roi=None, staff_zones=None):
+    def process_frame(self, frame, frame_id, timestamp=None, roi=None, staff_zones=None, kpi_zones=None):
         """Основной цикл обработки одного кадра."""
         self.zone_manager.update_staff_mask(staff_zones or [], frame.shape)
+        self.zone_manager.update_kpi_zones(kpi_zones or {})
+        
         input_frame, x_off, y_off = crop_roi(frame, roi)
         current_ts = timestamp if timestamp is not None else time.time()
 
@@ -75,10 +81,10 @@ class DetectorTracker:
         if not frame_result.detections or len(frame_result.detections) == 0:
             return [], set()
         
-        detections, active_ids = self._analyze_results(frame_result.detections[0], input_frame, x_off, y_off, frame_id, current_ts)
+        detections, active_ids, groups = self._analyze_results(frame_result.detections[0], input_frame, x_off, y_off, frame_id, current_ts)
         
         self._finalize_step()
-        return detections, active_ids
+        return detections, active_ids, groups
 
     def process_batch(self, frames, frame_ids, timestamps=None, roi=None, staff_zones=None):
         """Пакетная обработка кадров (batch mode)."""
@@ -105,8 +111,8 @@ class DetectorTracker:
         batch_output = []
 
         for res, inp_frame, (x_off, y_off), f_id, ts in zip(detection_results, processed_inputs, offsets, frame_ids, ts_list):
-            detections, active_ids = self._analyze_results(res, inp_frame, x_off, y_off, f_id, ts)
-            batch_output.append((detections, active_ids))
+            detections, active_ids, groups = self._analyze_results(res, inp_frame, x_off, y_off, f_id, ts)
+            batch_output.append((detections, active_ids, groups))
             self._finalize_step()
 
         return batch_output
@@ -115,8 +121,8 @@ class DetectorTracker:
         """Связующее звено между YOLO, трекером и бизнес-логикой."""
         if not self.tracking_service.tracker:
             if not result.boxes or len(result.boxes) == 0:
-                return [], set()
-            return self._handle_fallback(result, x_off, y_off, current_frame_id), set()
+                return [], set(), []
+            return self._handle_fallback(result, x_off, y_off, current_frame_id), set(), []
 
         masks = None
         if not result.boxes or len(result.boxes) == 0:
@@ -139,22 +145,32 @@ class DetectorTracker:
             )
 
         if tracked_objects.shape[0] == 0:
-            return [], set()
+            return [], set(), []
 
         # Обработка каждого объекта
-        detections, active_ids = [], set()
+        detections, active_ids, persons_list = [], set(), []
         for obj in tracked_objects:
-            # Обработка бизнес-логики (зоны, роль, история)
-            det = self.track_processor.process_track(
+            # Теперь получаем AnalysisResult объект
+            analysis_result = self.track_processor.process_track(
                 obj, boxes, masks, input_frame, x_off, y_off, current_frame_id, timestamp
             )
             
-            if det:
+            if analysis_result:
+                det = analysis_result.person_dict
+                p_data = analysis_result.person_data
+                
                 detections.append(det)
                 active_ids.add(det["track_id"])
+                persons_list.append(p_data)
+
+        # Анализ групповых событий на основе объектов PersonData
+        groups = self.event_analyzer.analyze(persons_list, current_frame_id)
+        if groups and 'on_event' in self.callbacks:
+            for group in groups:
+                 self.callbacks['on_event'](group)
 
         self._post_process_metrics(detections, current_frame_id)
-        return detections, active_ids
+        return detections, active_ids, groups
 
     def _prepare_yolo_data(self, result, input_frame):
         """Извлечение и базовая фильтрация данных из YOLO."""

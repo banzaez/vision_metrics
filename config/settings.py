@@ -3,6 +3,7 @@ from .sections.system import SystemConfig, PerformanceConfig, UIConfig
 from .sections.yolo import YOLOParams, YOLOModel, YOLOImageSize
 from .sections.tracker import TrackerConfig, TrackerType, ReIDModel
 from .sections.reid import CustomReIDConfig
+from .sections.events import EventsParams
 
 # =============================================================================
 # ГЛАВНЫЙ ФАЙЛ НАСТРОЕК (VISION METRICS)
@@ -114,6 +115,18 @@ settings = AppConfig(
             # Как часто слать отчеты о склейках в интерфейс (в кадрах).
             stats_callback_interval=15
         )
+    ),
+
+    # --- НАСТРОЙКИ СОБЫТИЙ (ГРУППИРОВКА И КОНСУЛЬТАЦИИ) ---
+    events=EventsParams(
+        # Расстояние между людьми (в пикселях) для объединения в группу.
+        proximity_threshold_px=250,
+        
+        # Минимальное количество человек для регистрации группы.
+        min_group_size=2,
+        
+        # Считать группу консультацией только если в ней есть и сотрудник, и клиент.
+        consultation_required_roles=True
     )
 )
 

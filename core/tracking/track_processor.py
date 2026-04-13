@@ -41,4 +41,4 @@ class TrackProcessor:
 
         self._track_manager.finalize(track_id)
 
-        return result.person_dict
+        return result
