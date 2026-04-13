@@ -27,6 +27,7 @@ class YOLOImageSize(int, Enum):
     XXL = 1920
 
 
+# ==> SETTINGS
 @dataclass
 class YOLOParams:
     """Параметры модели детекции и сегментации (YOLO)."""

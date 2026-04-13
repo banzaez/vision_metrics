@@ -1,6 +1,9 @@
 from dataclasses import dataclass
 
 
+# ==> SETTINGS CUSTOM REID
+
+
 @dataclass
 class CustomReIDConfig:
     """Конфигурация кастомного алгоритма сшивки треков (CustomReIDStitcher)."""
