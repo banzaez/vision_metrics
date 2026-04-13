@@ -221,3 +221,6 @@ data/*
 
 # QWEN
 .qwen/
+
+# cursor
+.cursor/
