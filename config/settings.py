@@ -19,8 +19,9 @@ settings = AppConfig(
     # --- СИСТЕМНЫЕ НАСТРОЙКИ (ПРОИЗВОДИТЕЛЬНОСТЬ И ИНТЕРФЕЙС) ---
     system=SystemConfig(
         perf=PerformanceConfig(
-            ## Вычислительное устройство: 'cuda', 'mps' (Apple Silicon), 'cpu'
-            #device='mps', 
+            # Вычислительное устройство: 'cuda', 'mps' (Apple Silicon), 'cpu'
+            # Также можно использовать 'auto' для автоматического определения.
+            device='auto', 
             
             # Режим половинной точности (FP16). Рекомендуется для ускорения.
             half=True,
@@ -90,6 +91,7 @@ settings = AppConfig(
         
         # Кастомная сшивка треков (CustomReIDStitcher).
         custom_reid=CustomReIDConfig(
+            # Включить/выключить кастомную сшивку треков.
             enabled=False,
             # Порог похожести векторов (0.0 - 1.0).
             threshold=0.6,

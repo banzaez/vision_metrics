@@ -20,6 +20,10 @@ class PerformanceConfig:
     device: str = field(default_factory=_get_optimal_device)
     """Устройство вычислений ('cpu', 'cuda', 'mps' для Mac)"""
 
+    def __post_init__(self):
+        if self.device == 'auto':
+            self.device = _get_optimal_device()
+
     half: bool = True
     """FP16 режим (рекомендуется для Mac M1)"""
 
