@@ -219,7 +219,6 @@ class AppConfig:
         logger.info(f"Конфигурация сохранена в {filepath}")
 
 
-# ─── Global singleton ────────────────────────────────────────────────────
 
-settings = AppConfig()
-settings.load()
+# AppConfig class logic remains here, but 'settings' instance is now created 
+# in config/settings.py to allow centralized configuration.

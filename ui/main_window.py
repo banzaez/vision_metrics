@@ -95,6 +95,9 @@ class MainWindow(QMainWindow):
         self.side_layout.addWidget(self.regions_panel)
         self.side_layout.addWidget(self.stats_panel)
         self.side_layout.addWidget(self.reid_panel)
+        
+        if not config.settings.tracker.custom_reid.enabled:
+            self.reid_panel.hide()
 
         self.main_layout.addWidget(self.side_panel, 2)
 

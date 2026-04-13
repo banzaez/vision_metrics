@@ -20,7 +20,8 @@
     ConfigBus.subscribe(lambda e: print(e))
 """
 
-from .app_config import settings, AppConfig
+from .app_config import AppConfig
+from .settings import settings
 from .events import ConfigBus, ConfigChangeEvent
 from .loader import ConfigLoader
 
